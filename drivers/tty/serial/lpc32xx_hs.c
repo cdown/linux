@@ -177,24 +177,29 @@ static int __init lpc32xx_hsuart_console_setup(struct console *co,
 }
 
 static struct uart_driver lpc32xx_hsuart_reg;
-static struct console lpc32xx_hsuart_console = {
-	.name		= LPC32XX_TTY_NAME,
+
+static struct console_operations lpc32xx_cons_ops = {
 	.write		= lpc32xx_hsuart_console_write,
-	.device		= uart_console_device,
+	.tty_dev		= uart_console_device,
 	.setup		= lpc32xx_hsuart_console_setup,
-	.flags		= CON_PRINTBUFFER,
-	.index		= -1,
-	.data		= &lpc32xx_hsuart_reg,
 };
+
+static struct console __initdata *lpc32xx_hsuart_console;
 
 static int __init lpc32xx_hsuart_console_init(void)
 {
-	register_console(&lpc32xx_hsuart_console);
+	lpc32xx_hsuart_console = init_console_dfl(&lpc32xx_cons_ops,
+						      LPC32XX_TTY_NAME,
+						      &lpc32xx_hsuart_reg);
+	if (!lpc32xx_hsuart_console)
+		return -ENOMEM;
+
+	register_console(lpc32xx_hsuart_console);
 	return 0;
 }
 console_initcall(lpc32xx_hsuart_console_init);
 
-#define LPC32XX_HSUART_CONSOLE (&lpc32xx_hsuart_console)
+#define LPC32XX_HSUART_CONSOLE (lpc32xx_hsuart_console)
 #else
 #define LPC32XX_HSUART_CONSOLE NULL
 #endif
@@ -204,7 +209,6 @@ static struct uart_driver lpc32xx_hs_reg = {
 	.driver_name	= MODNAME,
 	.dev_name	= LPC32XX_TTY_NAME,
 	.nr		= MAX_PORTS,
-	.cons		= LPC32XX_HSUART_CONSOLE,
 };
 static int uarts_registered;
 
@@ -736,6 +740,7 @@ static int __init lpc32xx_hsuart_init(void)
 {
 	int ret;
 
+	lpc32xx_hs_reg.cons = LPC32XX_HSUART_CONSOLE;
 	ret = uart_register_driver(&lpc32xx_hs_reg);
 	if (ret)
 		return ret;

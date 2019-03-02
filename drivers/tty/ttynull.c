@@ -54,10 +54,11 @@ static struct tty_driver *ttynull_device(struct console *c, int *index)
 	return ttynull_driver;
 }
 
-static struct console ttynull_console = {
-	.name = "ttynull",
-	.device = ttynull_device,
+static struct console_operations ttynull_console_ops = {
+	.tty_dev = ttynull_device,
 };
+
+static struct console *ttynull_console;
 
 static int __init ttynull_init(void)
 {
@@ -83,21 +84,36 @@ static int __init ttynull_init(void)
 	tty_port_link_device(&ttynull_port, driver, 0);
 
 	ret = tty_register_driver(driver);
-	if (ret < 0) {
-		tty_driver_kref_put(driver);
-		tty_port_destroy(&ttynull_port);
-		return ret;
+	if (ret < 0)
+		goto err_put_kref;
+
+	if (!ttynull_console) {
+		ttynull_console = init_console(&ttynull_console_ops,
+						   "ttynull", 0, 0, NULL);
+		if (!ttynull_console) {
+			ret = -ENOMEM;
+			goto err_put_driver;
+		}
 	}
 
 	ttynull_driver = driver;
-	register_console(&ttynull_console);
+	register_console(ttynull_console);
 
 	return 0;
+
+err_put_driver:
+	tty_unregister_driver(ttynull_driver);
+
+err_put_kref:
+	tty_driver_kref_put(driver);
+	tty_port_destroy(&ttynull_port);
+
+	return ret;
 }
 
 static void __exit ttynull_exit(void)
 {
-	unregister_console(&ttynull_console);
+	unregister_console(ttynull_console);
 	tty_unregister_driver(ttynull_driver);
 	tty_driver_kref_put(ttynull_driver);
 	tty_port_destroy(&ttynull_port);

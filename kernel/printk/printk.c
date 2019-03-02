@@ -87,6 +87,8 @@ static DEFINE_SEMAPHORE(console_sem);
 struct console *console_drivers;
 EXPORT_SYMBOL_GPL(console_drivers);
 
+static struct class *console_class = NULL;
+
 /*
  * System may need to suppress printk message under certain
  * circumstances, like after kernel panic happens.
@@ -115,6 +117,8 @@ enum devkmsg_log_masks {
 #define DEVKMSG_LOG_MASK_DEFAULT	0
 
 static unsigned int __read_mostly devkmsg_log = DEVKMSG_LOG_MASK_DEFAULT;
+
+static int printk_late_done;
 
 static int __control_devkmsg(char *str)
 {
@@ -1191,7 +1195,8 @@ MODULE_PARM_DESC(ignore_loglevel,
 
 static int effective_loglevel(struct console *con)
 {
-	return max(console_loglevel, con ? con->level : LOGLEVEL_EMERG);
+	return max(console_loglevel,
+		   con ? READ_ONCE(con->level) : LOGLEVEL_EMERG);
 }
 
 static bool suppress_message_printing(int level, struct console *con)
@@ -1924,7 +1929,7 @@ static void call_console_drivers(const char *ext_text, size_t ext_len,
 			continue;
 		if (!(con->flags & CON_ENABLED))
 			continue;
-		if (!con->write)
+		if (!con->ops->write)
 			continue;
 		if (!cpu_online(smp_processor_id()) &&
 		    !(con->flags & CON_ANYTIME))
@@ -1932,11 +1937,11 @@ static void call_console_drivers(const char *ext_text, size_t ext_len,
 		if (suppress_message_printing(level, con))
 			continue;
 		if (con->flags & CON_EXTENDED)
-			con->write(con, ext_text, ext_len);
+			con->ops->write(con, ext_text, ext_len);
 		else {
 			if (dropped_len)
-				con->write(con, dropped_text, dropped_len);
-			con->write(con, text, len);
+				con->ops->write(con, dropped_text, dropped_len);
+			con->ops->write(con, text, len);
 		}
 	}
 }
@@ -2330,9 +2335,16 @@ asmlinkage __visible void early_printk(const char *fmt, ...)
 	n = vscnprintf(buf, sizeof(buf), fmt, ap);
 	va_end(ap);
 
-	early_console->write(early_console, buf, n);
+	early_console->ops->write(early_console, buf, n);
 }
 #endif
+
+bool is_static_console(struct console *con)
+{
+	unsigned long addr = (unsigned long) con;
+	return is_kernel(addr) || is_potential_module_address(addr);
+}
+EXPORT_SYMBOL(is_static_console);
 
 static int __add_preferred_console(char *name, int idx, int loglevel,
 				   char *options, char *brl_options,
@@ -2799,8 +2811,8 @@ void console_unblank(void)
 	console_locked = 1;
 	console_may_schedule = 0;
 	for_each_console(c)
-		if ((c->flags & CON_ENABLED) && c->unblank)
-			c->unblank();
+		if ((c->flags & CON_ENABLED) && c->ops->unblank)
+			c->ops->unblank();
 	console_unlock();
 }
 
@@ -2837,9 +2849,9 @@ struct tty_driver *console_device(int *index)
 
 	console_lock();
 	for_each_console(c) {
-		if (!c->device)
+		if (!c->ops->tty_dev)
 			continue;
-		driver = c->device(c, index);
+		driver = c->ops->tty_dev(c, index);
 		if (driver)
 			break;
 	}
@@ -2880,6 +2892,67 @@ static int __init keep_bootcon_setup(char *str)
 
 early_param("keep_bootcon", keep_bootcon_setup);
 
+static void console_release(struct device *dev)
+{
+	struct console *con = container_of(dev, struct console, dev);
+
+	if (WARN(is_static_console(con), "Attempted to free static early console\n"))
+		return;
+
+	if (WARN(con->flags & CON_ENABLED, "Attempted to free running console\n"))
+		return;
+
+	pr_info("Freeing console %s\n", con->name);
+	kfree(con);
+}
+
+static void console_init_device(struct console *con)
+{
+	device_initialize(&con->dev);
+	dev_set_name(&con->dev, "%s", con->name);
+	con->dev.release = console_release;
+}
+
+static void console_register_device(struct console *new)
+{
+	/*
+	 * We might be called very early from register_console(): in that case,
+	 * printk_late_init() will take care of this later.
+	 */
+	if (!printk_late_done)
+		return;
+
+	if (is_static_console(new))
+		console_init_device(new);
+
+	if (!IS_ERR(console_class))
+		new->dev.class = console_class;
+
+	if (WARN_ON(device_add(&new->dev)))
+		put_device(&new->dev);
+}
+
+struct console *init_console(struct console_operations *ops,
+				 const char *name, short flags, short index,
+				 void *data)
+{
+	struct console *new;
+
+	new = kzalloc(sizeof(*new), GFP_KERNEL);
+	if (!new)
+		return NULL;
+
+	new->ops = ops;
+	strscpy(new->name, name, sizeof(new->name));
+	new->flags = flags;
+	new->index = index;
+	new->data = data;
+
+	console_init_device(new);
+	return new;
+}
+EXPORT_SYMBOL_GPL(init_console);
+
 /*
  * This is called by register_console() to try to match
  * the newly registered console with any of the ones selected
@@ -2900,8 +2973,8 @@ static int try_enable_preferred_console(struct console *newcon,
 	     i++, c++) {
 		if (c->user_specified != user_specified)
 			continue;
-		if (!newcon->match ||
-		    newcon->match(newcon, c->name, c->index, c->options) != 0) {
+		if (!newcon->ops->match ||
+		    newcon->ops->match(newcon, c->name, c->index, c->options) != 0) {
 			/* default matching */
 			BUILD_BUG_ON(sizeof(c->name) != sizeof(newcon->name));
 			if (strcmp(c->name, newcon->name) != 0)
@@ -2918,8 +2991,8 @@ static int try_enable_preferred_console(struct console *newcon,
 			if (_braille_register_console(newcon, c))
 				return 0;
 
-			if (newcon->setup &&
-			    (err = newcon->setup(newcon, c->options)) != 0)
+			if (newcon->ops->setup &&
+			    (err = newcon->ops->setup(newcon, c->options)) != 0)
 				return err;
 		}
 		newcon->flags |= CON_ENABLED;
@@ -2945,12 +3018,12 @@ static void try_enable_default_console(struct console *newcon)
 	if (newcon->index < 0)
 		newcon->index = 0;
 
-	if (newcon->setup && newcon->setup(newcon, NULL) != 0)
+	if (newcon->ops->setup && newcon->ops->setup(newcon, NULL) != 0)
 		return;
 
 	newcon->flags |= CON_ENABLED;
 
-	if (newcon->device)
+	if (newcon->ops->tty_dev)
 		newcon->flags |= CON_CONSDEV;
 }
 
@@ -3013,7 +3086,7 @@ void register_console(struct console *newcon)
 	 * flag set and will be first in the list.
 	 */
 	if (preferred_console < 0) {
-		if (!console_drivers || !console_drivers->device ||
+		if (!console_drivers || !console_drivers->ops->tty_dev ||
 		    console_drivers->flags & CON_BOOT) {
 			try_enable_default_console(newcon);
 		}
@@ -3062,6 +3135,8 @@ void register_console(struct console *newcon)
 		console_drivers->next = newcon;
 	}
 
+	get_console(newcon);
+
 	if (newcon->flags & CON_EXTENDED)
 		nr_ext_console_drivers++;
 
@@ -3086,6 +3161,7 @@ void register_console(struct console *newcon)
 		console_seq = syslog_seq;
 		mutex_unlock(&syslog_lock);
 	}
+	console_register_device(newcon);
 	console_unlock();
 	console_sysfs_notify();
 
@@ -3096,7 +3172,8 @@ void register_console(struct console *newcon)
 	 * users know there might be something in the kernel's log buffer that
 	 * went to the bootconsole (that they do not see on the real console)
 	 */
-	pr_info("%sconsole [%s%d] enabled\n",
+	pr_info("%s%sconsole [%s%d] enabled\n",
+		is_static_console(newcon) ? "static " : "",
 		(newcon->flags & CON_BOOT) ? "boot" : "" ,
 		newcon->name, newcon->index);
 	if (bootcon_enabled &&
@@ -3156,11 +3233,12 @@ int unregister_console(struct console *console)
 		console_drivers->flags |= CON_CONSDEV;
 
 	console->flags &= ~CON_ENABLED;
+	put_console(console);
 	console_unlock();
 	console_sysfs_notify();
 
-	if (console->exit)
-		res = console->exit(console);
+	if (console->ops->exit)
+		res = console->ops->exit(console);
 
 	return res;
 
@@ -3227,10 +3305,10 @@ static int __init printk_late_init(void)
 
 		/* Check addresses that might be used for enabled consoles. */
 		if (init_section_intersects(con, sizeof(*con)) ||
-		    init_section_contains(con->write, 0) ||
-		    init_section_contains(con->read, 0) ||
-		    init_section_contains(con->device, 0) ||
-		    init_section_contains(con->unblank, 0) ||
+		    init_section_contains(con->ops->write, 0) ||
+		    init_section_contains(con->ops->read, 0) ||
+		    init_section_contains(con->ops->tty_dev, 0) ||
+		    init_section_contains(con->ops->unblank, 0) ||
 		    init_section_contains(con->data, 0)) {
 			/*
 			 * Please, consider moving the reported consoles out
@@ -3248,6 +3326,14 @@ static int __init printk_late_init(void)
 					console_cpu_notify, NULL);
 	WARN_ON(ret < 0);
 	printk_sysctl_init();
+
+	console_class = class_create(THIS_MODULE, "console");
+	WARN_ON(IS_ERR(console_class));
+
+	printk_late_done = 1;
+	for_each_console(con)
+		console_register_device(con);
+
 	return 0;
 }
 late_initcall(printk_late_init);

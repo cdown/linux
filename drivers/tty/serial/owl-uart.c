@@ -603,20 +603,23 @@ static int owl_uart_console_setup(struct console *co, char *options)
 	return uart_set_options(&owl_port->port, co, baud, parity, bits, flow);
 }
 
-static struct console owl_uart_console = {
-	.name = OWL_UART_DEV_NAME,
+static struct console_operations owl_uart_cons_ops = {
 	.write = owl_uart_console_write,
-	.device = uart_console_device,
+	.tty_dev = uart_console_device,
 	.setup = owl_uart_console_setup,
-	.flags = CON_PRINTBUFFER,
-	.index = -1,
-	.data = &owl_uart_driver,
 };
+
+static struct console __initdata *owl_uart_console;
 
 static int __init owl_uart_console_init(void)
 {
-	register_console(&owl_uart_console);
+	owl_uart_console = init_console_dfl(&owl_uart_cons_ops,
+						OWL_UART_DEV_NAME,
+						&owl_uart_driver);
+	if (!owl_uart_console)
+		return -ENOMEM;
 
+	register_console(owl_uart_console);
 	return 0;
 }
 console_initcall(owl_uart_console_init);
@@ -630,20 +633,26 @@ static void owl_uart_early_console_write(struct console *co,
 	owl_uart_port_write(&dev->port, s, count);
 }
 
+static struct console_operations owl_uart_early_cons_ops = {
+	.write = owl_uart_early_console_write,
+};
+
 static int __init
 owl_uart_early_console_setup(struct earlycon_device *device, const char *opt)
 {
 	if (!device->port.membase)
 		return -ENODEV;
 
-	device->con->write = owl_uart_early_console_write;
-
+	/*
+	 * FIXME: Where does this console struct come from?
+	 */
+	device->con->ops = &owl_uart_early_cons_ops;
 	return 0;
 }
 OF_EARLYCON_DECLARE(owl, "actions,owl-uart",
 		    owl_uart_early_console_setup);
 
-#define OWL_UART_CONSOLE (&owl_uart_console)
+#define OWL_UART_CONSOLE (owl_uart_console)
 #else
 #define OWL_UART_CONSOLE NULL
 #endif
@@ -653,7 +662,6 @@ static struct uart_driver owl_uart_driver = {
 	.driver_name = "owl-uart",
 	.dev_name = OWL_UART_DEV_NAME,
 	.nr = OWL_UART_PORT_NUM,
-	.cons = OWL_UART_CONSOLE,
 };
 
 static const struct owl_uart_info owl_s500_info = {
@@ -772,6 +780,7 @@ static int __init owl_uart_init(void)
 {
 	int ret;
 
+	owl_uart_driver.cons = OWL_UART_CONSOLE;
 	ret = uart_register_driver(&owl_uart_driver);
 	if (ret)
 		return ret;

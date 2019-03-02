@@ -479,28 +479,28 @@ static int __init serial21285_console_setup(struct console *co, char *options)
 
 static struct uart_driver serial21285_reg;
 
-static struct console serial21285_console =
-{
-	.name		= SERIAL_21285_NAME,
+static struct console_operations serial2125_cons_ops = {
 	.write		= serial21285_console_write,
-	.device		= uart_console_device,
+	.tty_dev		= uart_console_device,
 	.setup		= serial21285_console_setup,
-	.flags		= CON_PRINTBUFFER,
-	.index		= -1,
-	.data		= &serial21285_reg,
 };
+
+static struct console __initdata *serial21285_console;
 
 static int __init rs285_console_init(void)
 {
+	serial21285_console = init_console_dfl(&serial2125_cons_ops,
+						   SERIAL_21285_NAME,
+						   &serial21285_reg);
+	if (!serial21285_console)
+		return -ENOMEM;
+
 	serial21285_setup_ports();
-	register_console(&serial21285_console);
+	register_console(serial21285_console);
 	return 0;
 }
 console_initcall(rs285_console_init);
 
-#define SERIAL_21285_CONSOLE	&serial21285_console
-#else
-#define SERIAL_21285_CONSOLE	NULL
 #endif
 
 static struct uart_driver serial21285_reg = {
@@ -510,7 +510,6 @@ static struct uart_driver serial21285_reg = {
 	.major			= SERIAL_21285_MAJOR,
 	.minor			= SERIAL_21285_MINOR,
 	.nr			= 1,
-	.cons			= SERIAL_21285_CONSOLE,
 };
 
 static int __init serial21285_init(void)
@@ -522,8 +521,10 @@ static int __init serial21285_init(void)
 	serial21285_setup_ports();
 
 	ret = uart_register_driver(&serial21285_reg);
-	if (ret == 0)
+	if (ret == 0) {
 		uart_add_one_port(&serial21285_reg, &serial21285_port);
+		serial21285_reg.cons = serial21285_console;
+	}
 
 	return ret;
 }

@@ -548,14 +548,10 @@ static int ulite_console_setup(struct console *co, char *options)
 	return uart_set_options(port, co, baud, parity, bits, flow);
 }
 
-static struct console ulite_console = {
-	.name	= ULITE_NAME,
+static struct console_operations ulite_cons_ops = {
 	.write	= ulite_console_write,
-	.device	= uart_console_device,
+	.tty_dev	= uart_console_device,
 	.setup	= ulite_console_setup,
-	.flags	= CON_PRINTBUFFER,
-	.index	= -1, /* Specified on the cmdline (e.g. console=ttyUL0 ) */
-	.data	= &ulite_uart_driver,
 };
 
 static void early_uartlite_putc(struct uart_port *port, int c)
@@ -585,19 +581,25 @@ static void early_uartlite_write(struct console *console,
 	uart_console_write(&device->port, s, n, early_uartlite_putc);
 }
 
+static struct console_operations early_uartlite_cons_ops = {
+	.write = early_uartlite_write,
+};
+
 static int __init early_uartlite_setup(struct earlycon_device *device,
 				       const char *options)
 {
 	if (!device->port.membase)
 		return -ENODEV;
 
-	device->con->write = early_uartlite_write;
+	device->con->ops = &early_uartlite_cons_ops;
 	return 0;
 }
 EARLYCON_DECLARE(uartlite, early_uartlite_setup);
 OF_EARLYCON_DECLARE(uartlite_b, "xlnx,opb-uartlite-1.00.b", early_uartlite_setup);
 OF_EARLYCON_DECLARE(uartlite_a, "xlnx,xps-uartlite-1.00.a", early_uartlite_setup);
 
+#else
+static struct console_operations ulite_cons_ops;
 #endif /* CONFIG_SERIAL_UARTLITE_CONSOLE */
 
 static struct uart_driver ulite_uart_driver = {
@@ -607,9 +609,6 @@ static struct uart_driver ulite_uart_driver = {
 	.major		= ULITE_MAJOR,
 	.minor		= ULITE_MINOR,
 	.nr		= ULITE_NR_UARTS,
-#ifdef CONFIG_SERIAL_UARTLITE_CONSOLE
-	.cons		= &ulite_console,
-#endif
 };
 
 /* ---------------------------------------------------------------------
@@ -878,6 +877,13 @@ of_err:
 	pm_runtime_enable(&pdev->dev);
 
 	if (!ulite_uart_driver.state) {
+#ifdef CONFIG_SERIAL_UARTLITE_CONSOLE
+		ret = uart_init_console_dfl(&ulite_uart_driver,
+						&ulite_cons_ops, ULITE_NAME);
+		if (ret)
+			return ret;
+#endif
+
 		dev_dbg(&pdev->dev, "uartlite: calling uart_register_driver()\n");
 		ret = uart_register_driver(&ulite_uart_driver);
 		if (ret < 0) {
