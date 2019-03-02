@@ -357,25 +357,27 @@ static int __init altera_jtaguart_console_setup(struct console *co,
 
 static struct uart_driver altera_jtaguart_driver;
 
-static struct console altera_jtaguart_console = {
-	.name	= "ttyJ",
+static struct console_operations jtaguart_cons_ops = {
 	.write	= altera_jtaguart_console_write,
-	.device	= uart_console_device,
+	.tty_dev	= uart_console_device,
 	.setup	= altera_jtaguart_console_setup,
-	.flags	= CON_PRINTBUFFER,
-	.index	= -1,
-	.data	= &altera_jtaguart_driver,
 };
+
+static struct console __initdata *altera_jtaguart_console;
 
 static int __init altera_jtaguart_console_init(void)
 {
-	register_console(&altera_jtaguart_console);
+	altera_jtaguart_console = init_console_dfl(&jtaguart_cons_ops,
+						       "ttyJ",
+						       &altera_jtaguart_driver);
+	if (!altera_jtaguart_console)
+		return -ENOMEM;
+
+	register_console(altera_jtaguart_console);
 	return 0;
 }
 
 console_initcall(altera_jtaguart_console_init);
-
-#define	ALTERA_JTAGUART_CONSOLE	(&altera_jtaguart_console)
 
 static void altera_jtaguart_earlycon_write(struct console *co, const char *s,
 					   unsigned int count)
@@ -385,22 +387,25 @@ static void altera_jtaguart_earlycon_write(struct console *co, const char *s,
 	uart_console_write(&dev->port, s, count, altera_jtaguart_console_putc);
 }
 
+static struct console_operations jtaguart_earlycon_con_ops = {
+	.write = altera_jtaguart_earlycon_write,
+};
+
 static int __init altera_jtaguart_earlycon_setup(struct earlycon_device *dev,
 						 const char *options)
 {
 	if (!dev->port.membase)
 		return -ENODEV;
 
-	dev->con->write = altera_jtaguart_earlycon_write;
+	dev->con->ops = &jtaguart_earlycon_con_ops;
 	return 0;
 }
 
 OF_EARLYCON_DECLARE(juart, "altr,juart-1.0", altera_jtaguart_earlycon_setup);
 
+#define ALTERA_JTAGUART_CONSOLE (altera_jtaguart_console)
 #else
-
-#define	ALTERA_JTAGUART_CONSOLE	NULL
-
+#define ALTERA_JTAGUART_CONSOLE NULL
 #endif /* CONFIG_SERIAL_ALTERA_JTAGUART_CONSOLE */
 
 static struct uart_driver altera_jtaguart_driver = {
@@ -410,7 +415,6 @@ static struct uart_driver altera_jtaguart_driver = {
 	.major		= ALTERA_JTAGUART_MAJOR,
 	.minor		= ALTERA_JTAGUART_MINOR,
 	.nr		= ALTERA_JTAGUART_MAXPORTS,
-	.cons		= ALTERA_JTAGUART_CONSOLE,
 };
 
 static int altera_jtaguart_probe(struct platform_device *pdev)
@@ -502,12 +506,15 @@ static int __init altera_jtaguart_init(void)
 {
 	int rc;
 
+	altera_jtaguart_driver.cons = ALTERA_JTAGUART_CONSOLE;
 	rc = uart_register_driver(&altera_jtaguart_driver);
 	if (rc)
 		return rc;
+
 	rc = platform_driver_register(&altera_jtaguart_platform_driver);
 	if (rc)
 		uart_unregister_driver(&altera_jtaguart_driver);
+
 	return rc;
 }
 

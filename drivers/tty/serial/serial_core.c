@@ -2621,6 +2621,14 @@ void uart_unregister_driver(struct uart_driver *drv)
 	kfree(drv->state);
 	drv->state = NULL;
 	drv->tty_driver = NULL;
+
+	if (drv->cons) {
+		/*
+		 * This is the base reference from uart_init_console()
+		 */
+		put_device(&drv->cons->dev);
+		drv->cons = NULL;
+	}
 }
 
 struct tty_driver *uart_console_device(struct console *co, int *index)
@@ -3008,10 +3016,14 @@ int uart_remove_one_port(struct uart_driver *drv, struct uart_port *uport)
 	}
 
 	/*
-	 * If the port is used as a console, unregister it
+	 * If the port is used as a console, unregister it. This put() pairs
+	 * with the base reference obtained by drivers via init_console().
 	 */
-	if (uart_console(uport))
+	if (uart_console(uport)) {
 		unregister_console(uport->cons);
+		put_console(uport->cons);
+		uport->cons = NULL;
+	}
 
 	/*
 	 * Free the port IO and memory resources, if any.

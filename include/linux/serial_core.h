@@ -412,6 +412,21 @@ bool uart_match_port(const struct uart_port *port1,
 		const struct uart_port *port2);
 
 /*
+ * This ugliness removes the need for #ifdef boilerplate in UART drivers which
+ * allow their console functionality to be disabled via Kconfig.
+ */
+#define uart_init_console(drv, ops, name, flags, idx)			    \
+({									    \
+	(drv)->cons = init_console(ops, name, flags, idx, drv);		    \
+	(drv)->cons ? 0 : -ENOMEM;					    \
+})
+
+#define uart_init_console_dfl(drv, ops, name) \
+	uart_init_console(drv, ops, name, CON_PRINTBUFFER, -1)
+
+#define uart_put_console(drv) put_console((drv)->cons)
+
+/*
  * Power Management
  */
 int uart_suspend_port(struct uart_driver *reg, struct uart_port *port);

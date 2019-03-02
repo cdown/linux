@@ -134,11 +134,15 @@ static int __init sh_console_setup(struct console *co, char *options)
 	return 0;
 }
 
-static struct console bios_console = {
-	.name		= "bios",
+static struct console_operations bios_ops = {
 	.write		= sh_console_write,
 	.setup		= sh_console_setup,
+};
+
+static struct console bios_console = {
+	.name		= "bios",
 	.flags		= CON_PRINTBUFFER,
+	.ops		= &bios_ops,
 	.index		= -1,
 };
 

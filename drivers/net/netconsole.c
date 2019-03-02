@@ -67,11 +67,7 @@ static LIST_HEAD(target_list);
 /* This needs to be a spinlock because write_msg() cannot sleep */
 static DEFINE_SPINLOCK(target_list_lock);
 
-/*
- * Console driver for extended netconsoles.  Registered on the first use to
- * avoid unnecessarily enabling ext message formatting.
- */
-static struct console netconsole_ext;
+static struct console *netconsole;
 
 /**
  * struct netconsole_target - Represents a configured netconsole target.
@@ -332,10 +328,8 @@ static ssize_t enabled_store(struct config_item *item,
 	}
 
 	if (enabled) {	/* true */
-		if (nt->extended && !(netconsole_ext.flags & CON_ENABLED)) {
-			netconsole_ext.flags |= CON_ENABLED;
-			register_console(&netconsole_ext);
-		}
+		if (nt->extended)
+			netconsole->flags |= CON_EXTENDED;
 
 		/*
 		 * Skip netpoll_parse_options() -- all the attributes are
@@ -817,65 +811,51 @@ static void send_ext_msg_udp(struct netconsole_target *nt, const char *msg,
 	}
 }
 
-static void write_ext_msg(struct console *con, const char *msg,
-			  unsigned int len)
+static void send_msg_udp(struct netconsole_target *nt, const char *msg, int len)
 {
-	struct netconsole_target *nt;
-	unsigned long flags;
+	int frag, left;
+	const char *tmp;
 
-	if ((oops_only && !oops_in_progress) || list_empty(&target_list))
-		return;
-
-	spin_lock_irqsave(&target_list_lock, flags);
-	list_for_each_entry(nt, &target_list, list)
-		if (nt->extended && nt->enabled && netif_running(nt->np.dev))
-			send_ext_msg_udp(nt, msg, len);
-	spin_unlock_irqrestore(&target_list_lock, flags);
+	/* We nest this inside the caller's for-each loop
+	 * so that we're able to get as much logging out to
+	 * at least one target if we die inside here, instead
+	 * of unnecessarily keeping all targets in lock-step.
+	 */
+	tmp = msg;
+	for (left = len; left;) {
+		frag = min(left, MAX_PRINT_CHUNK);
+		netpoll_send_udp(&nt->np, tmp, frag);
+		tmp += frag;
+		left -= frag;
+	}
 }
 
 static void write_msg(struct console *con, const char *msg, unsigned int len)
 {
-	int frag, left;
 	unsigned long flags;
 	struct netconsole_target *nt;
-	const char *tmp;
 
 	if (oops_only && !oops_in_progress)
 		return;
+
 	/* Avoid taking lock and disabling interrupts unnecessarily */
 	if (list_empty(&target_list))
 		return;
 
 	spin_lock_irqsave(&target_list_lock, flags);
 	list_for_each_entry(nt, &target_list, list) {
-		if (!nt->extended && nt->enabled && netif_running(nt->np.dev)) {
-			/*
-			 * We nest this inside the for-each-target loop above
-			 * so that we're able to get as much logging out to
-			 * at least one target if we die inside here, instead
-			 * of unnecessarily keeping all targets in lock-step.
-			 */
-			tmp = msg;
-			for (left = len; left;) {
-				frag = min(left, MAX_PRINT_CHUNK);
-				netpoll_send_udp(&nt->np, tmp, frag);
-				tmp += frag;
-				left -= frag;
-			}
-		}
+		if (!nt->enabled || !netif_running(nt->np.dev))
+			continue;
+
+		if (nt->extended)
+			send_ext_msg_udp(nt, msg, len);
+		else
+			send_msg_udp(nt, msg, len);
 	}
 	spin_unlock_irqrestore(&target_list_lock, flags);
 }
 
-static struct console netconsole_ext = {
-	.name	= "netcon_ext",
-	.flags	= CON_EXTENDED,	/* starts disabled, registered on first use */
-	.write	= write_ext_msg,
-};
-
-static struct console netconsole = {
-	.name	= "netcon",
-	.flags	= CON_ENABLED,
+static struct console_operations netconsole_ops = {
 	.write	= write_msg,
 };
 
@@ -886,6 +866,7 @@ static int __init init_netconsole(void)
 	unsigned long flags;
 	char *target_config;
 	char *input = config;
+	short con_flags = CON_ENABLED | CON_PRINTBUFFER;
 
 	if (strnlen(input, MAX_PARAM_LENGTH)) {
 		while ((target_config = strsep(&input, ";"))) {
@@ -894,18 +875,22 @@ static int __init init_netconsole(void)
 				err = PTR_ERR(nt);
 				goto fail;
 			}
-			/* Dump existing printks when we register */
 			if (nt->extended)
-				netconsole_ext.flags |= CON_PRINTBUFFER |
-							CON_ENABLED;
-			else
-				netconsole.flags |= CON_PRINTBUFFER;
+				con_flags |= CON_EXTENDED;
 
 			spin_lock_irqsave(&target_list_lock, flags);
 			list_add(&nt->list, &target_list);
 			spin_unlock_irqrestore(&target_list_lock, flags);
 		}
 	}
+
+	netconsole = init_console_dfl(&netconsole_ops, "netcon", NULL);
+	if (!netconsole) {
+		err = -ENOMEM;
+		goto fail;
+	}
+
+	netconsole->flags = con_flags;
 
 	err = register_netdevice_notifier(&netconsole_netdev_notifier);
 	if (err)
@@ -915,11 +900,8 @@ static int __init init_netconsole(void)
 	if (err)
 		goto undonotifier;
 
-	if (netconsole_ext.flags & CON_ENABLED)
-		register_console(&netconsole_ext);
-	register_console(&netconsole);
+	register_console(netconsole);
 	pr_info("network logging started\n");
-
 	return err;
 
 undonotifier:
@@ -945,8 +927,7 @@ static void __exit cleanup_netconsole(void)
 {
 	struct netconsole_target *nt, *tmp;
 
-	unregister_console(&netconsole_ext);
-	unregister_console(&netconsole);
+	unregister_console(netconsole);
 	dynamic_netconsole_exit();
 	unregister_netdevice_notifier(&netconsole_netdev_notifier);
 
@@ -962,6 +943,8 @@ static void __exit cleanup_netconsole(void)
 		list_del(&nt->list);
 		free_param_target(nt);
 	}
+
+	put_console(netconsole);
 }
 
 /*

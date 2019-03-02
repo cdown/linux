@@ -83,10 +83,14 @@ static void sun3x_prom_write(struct console *co, const char *s,
 
 /* debug console - write-only */
 
+static struct console_operations sun3x_prom = {
+	.write	= sun3x_prom_write,
+};
+
 static struct console sun3x_debug = {
 	.name	= "debug",
-	.write	= sun3x_prom_write,
 	.flags	= CON_PRINTBUFFER,
+	.ops = &sun3x_prom,
 	.index	= -1,
 };
 

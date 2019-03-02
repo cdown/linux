@@ -564,25 +564,27 @@ static int __init mcf_console_setup(struct console *co, char *options)
 
 static struct uart_driver mcf_driver;
 
-static struct console mcf_console = {
-	.name		= "ttyS",
+static struct console_operations mcf_cons_ops = {
 	.write		= mcf_console_write,
-	.device		= uart_console_device,
+	.tty_dev		= uart_console_device,
 	.setup		= mcf_console_setup,
-	.flags		= CON_PRINTBUFFER,
-	.index		= -1,
-	.data		= &mcf_driver,
 };
+
+static struct console __initdata *mcf_console;
 
 static int __init mcf_console_init(void)
 {
-	register_console(&mcf_console);
+	mcf_console = init_console_dfl(&mcf_cons_ops, "ttyS", &mcf_driver);
+	if (!mcf_console)
+		return -ENOMEM;
+
+	register_console(mcf_console);
 	return 0;
 }
 
 console_initcall(mcf_console_init);
 
-#define	MCF_CONSOLE	&mcf_console
+#define	MCF_CONSOLE	(mcf_console)
 
 /****************************************************************************/
 #else
@@ -604,7 +606,6 @@ static struct uart_driver mcf_driver = {
 	.major		= TTY_MAJOR,
 	.minor		= 64,
 	.nr		= MCF_MAXPORTS,
-	.cons		= MCF_CONSOLE,
 };
 
 /****************************************************************************/
@@ -672,6 +673,7 @@ static int __init mcf_init(void)
 
 	printk("ColdFire internal UART serial driver\n");
 
+	mcf_driver.cons = MCF_CONSOLE;
 	rc = uart_register_driver(&mcf_driver);
 	if (rc)
 		return rc;

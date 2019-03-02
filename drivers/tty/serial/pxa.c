@@ -739,19 +739,14 @@ serial_pxa_console_setup(struct console *co, char *options)
 	return uart_set_options(&up->port, co, baud, parity, bits, flow);
 }
 
-static struct console serial_pxa_console = {
-	.name		= "ttyS",
+static struct console_operations pxa_cons_ops = {
 	.write		= serial_pxa_console_write,
-	.device		= uart_console_device,
+	.tty_dev		= uart_console_device,
 	.setup		= serial_pxa_console_setup,
-	.flags		= CON_PRINTBUFFER,
-	.index		= -1,
-	.data		= &serial_pxa_reg,
 };
 
-#define PXA_CONSOLE	&serial_pxa_console
 #else
-#define PXA_CONSOLE	NULL
+static struct console_operations pxa_cons_ops;
 #endif
 
 static const struct uart_ops serial_pxa_pops = {
@@ -785,7 +780,6 @@ static struct uart_driver serial_pxa_reg = {
 	.major		= TTY_MAJOR,
 	.minor		= 64,
 	.nr		= 4,
-	.cons		= PXA_CONSOLE,
 };
 
 #ifdef CONFIG_PM
@@ -933,14 +927,26 @@ static int __init serial_pxa_init(void)
 {
 	int ret;
 
+#ifdef CONFIG_SERIAL_PXA_CONSOLE
+	ret = uart_init_console_dfl(&serial_pxa_reg, &pxa_cons_ops, "ttyS");
+	if (ret)
+		return ret;
+#endif
+
 	ret = uart_register_driver(&serial_pxa_reg);
 	if (ret != 0)
-		return ret;
+		goto out;
 
 	ret = platform_driver_register(&serial_pxa_driver);
 	if (ret != 0)
-		uart_unregister_driver(&serial_pxa_reg);
+		goto out_unregister;
 
+	return 0;
+
+out_unregister:
+	uart_unregister_driver(&serial_pxa_reg);
+out:
+	uart_put_console(&serial_pxa_reg);
 	return ret;
 }
 device_initcall(serial_pxa_init);

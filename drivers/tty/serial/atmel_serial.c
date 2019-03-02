@@ -2662,20 +2662,14 @@ static int __init atmel_console_setup(struct console *co, char *options)
 
 static struct uart_driver atmel_uart;
 
-static struct console atmel_console = {
-	.name		= ATMEL_DEVICENAME,
+static struct console_operations atmel_cons_ops = {
 	.write		= atmel_console_write,
-	.device		= uart_console_device,
+	.tty_dev		= uart_console_device,
 	.setup		= atmel_console_setup,
-	.flags		= CON_PRINTBUFFER,
-	.index		= -1,
-	.data		= &atmel_uart,
 };
 
-#define ATMEL_CONSOLE_DEVICE	(&atmel_console)
-
 #else
-#define ATMEL_CONSOLE_DEVICE	NULL
+static struct console_operations atmel_cons_ops;
 #endif
 
 static struct uart_driver atmel_uart = {
@@ -2685,7 +2679,6 @@ static struct uart_driver atmel_uart = {
 	.major		= SERIAL_ATMEL_MAJOR,
 	.minor		= MINOR_START,
 	.nr		= ATMEL_MAX_UART,
-	.cons		= ATMEL_CONSOLE_DEVICE,
 };
 
 #ifdef CONFIG_PM
@@ -2902,7 +2895,7 @@ static int atmel_serial_probe(struct platform_device *pdev)
 
 #ifdef CONFIG_SERIAL_ATMEL_CONSOLE
 	if (uart_console(&atmel_port->uart)
-			&& ATMEL_CONSOLE_DEVICE->flags & CON_ENABLED) {
+			&& atmel_uart.cons->flags & CON_ENABLED) {
 		/*
 		 * The serial core enabled the clock for us, so undo
 		 * the clk_prepare_enable() in atmel_console_setup()
@@ -3004,14 +2997,25 @@ static int __init atmel_serial_init(void)
 {
 	int ret;
 
-	ret = uart_register_driver(&atmel_uart);
+#ifdef CONFIG_SERIAL_ATMEL_CONSOLE
+	ret = uart_init_console_dfl(&atmel_uart, &atmel_cons_ops,
+					ATMEL_DEVICENAME);
 	if (ret)
 		return ret;
+#endif
+
+	ret = uart_register_driver(&atmel_uart);
+	if (ret)
+		goto out;
 
 	ret = platform_driver_register(&atmel_serial_driver);
 	if (ret)
-		uart_unregister_driver(&atmel_uart);
+		goto out_unregister;
 
+out_unregister:
+	uart_unregister_driver(&atmel_uart);
+out:
+	uart_put_console(&atmel_uart);
 	return ret;
 }
 device_initcall(atmel_serial_init);

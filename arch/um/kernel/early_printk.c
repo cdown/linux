@@ -13,10 +13,14 @@ static void early_console_write(struct console *con, const char *s, unsigned int
 	um_early_printk(s, n);
 }
 
+static struct console_operations early_ops = {
+	.write = early_console_write,
+};
+
 static struct console early_console_dev = {
 	.name = "earlycon",
-	.write = early_console_write,
 	.flags = CON_BOOT,
+	.ops = &early_ops,
 	.index = -1,
 };
 

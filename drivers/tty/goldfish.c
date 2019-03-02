@@ -39,7 +39,7 @@ struct goldfish_tty {
 	void __iomem *base;
 	u32 irq;
 	int opencount;
-	struct console console;
+	struct console *console;
 	u32 version;
 	struct device *dev;
 };
@@ -241,6 +241,12 @@ static const struct tty_operations goldfish_tty_ops = {
 	.chars_in_buffer = goldfish_tty_chars_in_buffer,
 };
 
+static struct console_operations goldfish_cons_ops = {
+	.write = goldfish_tty_console_write,
+	.tty_dev = goldfish_tty_console_device,
+	.setup = goldfish_tty_console_setup,
+};
+
 static int goldfish_tty_create_driver(void)
 {
 	int ret;
@@ -390,18 +396,19 @@ static int goldfish_tty_probe(struct platform_device *pdev)
 		goto err_tty_register_device_failed;
 	}
 
-	strcpy(qtty->console.name, "ttyGF");
-	qtty->console.write = goldfish_tty_console_write;
-	qtty->console.device = goldfish_tty_console_device;
-	qtty->console.setup = goldfish_tty_console_setup;
-	qtty->console.flags = CON_PRINTBUFFER;
-	qtty->console.index = line;
-	register_console(&qtty->console);
+	qtty->console = init_console_dfl(&goldfish_cons_ops, "ttyGF", NULL);
+	if (!qtty->console)
+		goto err_alloc_console_failed;
+
+	qtty->console->index = line;
+	register_console(qtty->console);
 	platform_set_drvdata(pdev, qtty);
 
 	mutex_unlock(&goldfish_tty_lock);
 	return 0;
 
+err_alloc_console_failed:
+	tty_unregister_device(goldfish_tty_driver, line);
 err_tty_register_device_failed:
 	free_irq(irq, qtty);
 err_dec_line_count:
@@ -421,8 +428,9 @@ static int goldfish_tty_remove(struct platform_device *pdev)
 
 	mutex_lock(&goldfish_tty_lock);
 
-	unregister_console(&qtty->console);
-	tty_unregister_device(goldfish_tty_driver, qtty->console.index);
+	unregister_console(qtty->console);
+	put_device(&qtty->console->dev);
+	tty_unregister_device(goldfish_tty_driver, qtty->console->index);
 	iounmap(qtty->base);
 	qtty->base = NULL;
 	free_irq(qtty->irq, pdev);
@@ -446,13 +454,17 @@ static void gf_early_write(struct console *con, const char *s, unsigned int n)
 	uart_console_write(&dev->port, s, n, gf_early_console_putchar);
 }
 
+static struct console_operations goldfish_early_cons_ops = {
+	.write = gf_early_write,
+};
+
 static int __init gf_earlycon_setup(struct earlycon_device *device,
 				    const char *opt)
 {
 	if (!device->port.membase)
 		return -ENODEV;
 
-	device->con->write = gf_early_write;
+	device->con->ops = &goldfish_early_cons_ops;
 	return 0;
 }
 
