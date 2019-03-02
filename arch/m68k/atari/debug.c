@@ -49,6 +49,10 @@ static void atari_mfp_console_write(struct console *co, const char *str,
 	}
 }
 
+static struct console_operations mfp_ops = {
+	.write = atari_mfp_console_write,
+};
+
 static inline void ata_scc_out(char c)
 {
 	do {
@@ -68,6 +72,10 @@ static void atari_scc_console_write(struct console *co, const char *str,
 	}
 }
 
+static struct console_operations scc_ops = {
+	.write = atari_scc_console_write,
+};
+
 static inline void ata_midi_out(char c)
 {
 	while (!(acia.mid_ctrl & ACIA_TDRE))	/* wait for tx buf empty */
@@ -84,6 +92,10 @@ static void atari_midi_console_write(struct console *co, const char *str,
 		ata_midi_out(*str++);
 	}
 }
+
+static struct console_operations midi_ops = {
+	.write = atari_midi_console_write,
+};
 
 static int ata_par_out(char c)
 {
@@ -127,6 +139,10 @@ static void atari_par_console_write(struct console *co, const char *str,
 		}
 	}
 }
+
+static struct console_operations par_ops = {
+	.write = atari_par_console_write,
+};
 
 #if 0
 int atari_mfp_console_wait_key(struct console *co)
@@ -296,19 +312,19 @@ static int __init atari_debug_setup(char *arg)
 		/* defaults to ser2 for a Falcon and ser1 otherwise */
 		arg = MACH_IS_FALCON ? "ser2" : "ser1";
 
-	registered = !!atari_console_driver.write;
+	registered = !!atari_console_driver.ops;
 	if (!strcmp(arg, "ser1")) {
 		/* ST-MFP Modem1 serial port */
 		atari_init_mfp_port(B9600|CS8);
-		atari_console_driver.write = atari_mfp_console_write;
+		atari_console_driver.ops = &mfp_ops;
 	} else if (!strcmp(arg, "ser2")) {
 		/* SCC Modem2 serial port */
 		atari_init_scc_port(B9600|CS8);
-		atari_console_driver.write = atari_scc_console_write;
+		atari_console_driver.ops = &scc_ops;
 	} else if (!strcmp(arg, "midi")) {
 		/* MIDI port */
 		atari_init_midi_port(B9600|CS8);
-		atari_console_driver.write = atari_midi_console_write;
+		atari_console_driver.ops = &midi_ops;
 	} else if (!strcmp(arg, "par")) {
 		/* parallel printer */
 		atari_turnoff_irq(IRQ_MFP_BUSY); /* avoid ints */
@@ -318,9 +334,9 @@ static int __init atari_debug_setup(char *arg)
 		sound_ym.wd_data = 0;		/* no char */
 		sound_ym.rd_data_reg_sel = 14;	/* select port A */
 		sound_ym.wd_data = sound_ym.rd_data_reg_sel | 0x20; /* strobe H */
-		atari_console_driver.write = atari_par_console_write;
+		atari_console_driver.ops = &par_ops;
 	}
-	if (atari_console_driver.write && !registered)
+	if (atari_console_driver.ops && !registered)
 		register_console(&atari_console_driver);
 
 	return 0;
