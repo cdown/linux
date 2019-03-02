@@ -2057,7 +2057,7 @@ asmlinkage __visible void early_printk(const char *fmt, ...)
 #endif
 
 static int __add_preferred_console(char *name, int idx, char *options,
-				   char *brl_options)
+				   int loglevel, char *brl_options)
 {
 	struct console_cmdline *c;
 	int i;
@@ -2083,6 +2083,7 @@ static int __add_preferred_console(char *name, int idx, char *options,
 	c->options = options;
 	braille_set_options(c, brl_options);
 
+	c->loglevel = loglevel;
 	c->index = idx;
 	return 0;
 }
@@ -2104,8 +2105,8 @@ __setup("console_msg_format=", console_msg_format_setup);
 static int __init console_setup(char *str)
 {
 	char buf[sizeof(console_cmdline[0].name) + 4]; /* 4 for "ttyS" */
-	char *s, *options, *brl_options = NULL;
-	int idx;
+	char *s, *options, *llevel, *brl_options = NULL;
+	int idx, loglevel = LOGLEVEL_EMERG;
 
 	if (_braille_console_setup(&str, &brl_options))
 		return 1;
@@ -2123,6 +2124,14 @@ static int __init console_setup(char *str)
 	options = strchr(str, ',');
 	if (options)
 		*(options++) = 0;
+
+	llevel = strchr(str, '/');
+	if (llevel) {
+		*(llevel++) = 0;
+		if (kstrtoint(llevel, 10, &loglevel))
+			loglevel = LOGLEVEL_EMERG;
+	}
+
 #ifdef __sparc__
 	if (!strcmp(str, "ttya"))
 		strcpy(buf, "ttyS0");
@@ -2135,7 +2144,7 @@ static int __init console_setup(char *str)
 	idx = simple_strtoul(s, NULL, 10);
 	*s = 0;
 
-	__add_preferred_console(buf, idx, options, brl_options);
+	__add_preferred_console(buf, idx, options, loglevel, brl_options);
 	console_set_on_cmdline = 1;
 	return 1;
 }
@@ -2156,7 +2165,8 @@ __setup("console=", console_setup);
  */
 int add_preferred_console(char *name, int idx, char *options)
 {
-	return __add_preferred_console(name, idx, options, NULL);
+	return __add_preferred_console(name, idx, options, LOGLEVEL_EMERG,
+				       NULL);
 }
 
 bool console_suspend_enabled = true;
@@ -2574,6 +2584,7 @@ void register_console(struct console *newcon)
 	struct console *bcon = NULL;
 	struct console_cmdline *c;
 	static bool has_preferred;
+	bool cmdline_exists = false;
 
 	if (console_drivers)
 		for_each_console(bcon)
@@ -2640,6 +2651,12 @@ void register_console(struct console *newcon)
 			if (newcon->index < 0)
 				newcon->index = c->index;
 
+			/*
+			 * Carry over the loglevel from the cmdline
+			 */
+			newcon->level = c->loglevel;
+			cmdline_exists = true;
+
 			if (_braille_register_console(newcon, c))
 				return;
 
@@ -2671,7 +2688,8 @@ void register_console(struct console *newcon)
 	/*
 	 * By default, the per-console minimum forces no messages through.
 	 */
-	newcon->level = LOGLEVEL_EMERG;
+	if (!cmdline_exists)
+		newcon->level = LOGLEVEL_EMERG;
 
 	/*
 	 *	Put this console in the list - keep the
