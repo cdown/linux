@@ -575,17 +575,12 @@ static int __init sprd_console_setup(struct console *co, char *options)
 }
 
 static struct uart_driver sprd_uart_driver;
-static struct console sprd_console = {
-	.name = SPRD_TTY_NAME,
+
+static const struct console_operations sprd_cons_ops = {
 	.write = sprd_console_write,
 	.device = uart_console_device,
 	.setup = sprd_console_setup,
-	.flags = CON_PRINTBUFFER,
-	.index = -1,
-	.data = &sprd_uart_driver,
 };
-
-#define SPRD_CONSOLE	(&sprd_console)
 
 /* Support for earlycon */
 static void sprd_putc(struct uart_port *port, int c)
@@ -606,20 +601,24 @@ static void sprd_early_write(struct console *con, const char *s, unsigned int n)
 	uart_console_write(&dev->port, s, n, sprd_putc);
 }
 
+static const struct console_operations sprd_early_cons_ops = {
+	.write = sprd_early_write,
+};
+
 static int __init sprd_early_console_setup(struct earlycon_device *device,
 					   const char *opt)
 {
 	if (!device->port.membase)
 		return -ENODEV;
 
-	device->con->write = sprd_early_write;
+	device->con->ops = &sprd_early_cons_ops;
 	return 0;
 }
 OF_EARLYCON_DECLARE(sprd_serial, "sprd,sc9836-uart",
 		    sprd_early_console_setup);
 
 #else /* !CONFIG_SERIAL_SPRD_CONSOLE */
-#define SPRD_CONSOLE		NULL
+static const struct console_operations sprd_cons_ops;
 #endif
 
 static struct uart_driver sprd_uart_driver = {
@@ -629,7 +628,6 @@ static struct uart_driver sprd_uart_driver = {
 	.major = 0,
 	.minor = 0,
 	.nr = UART_NR_MAX,
-	.cons = SPRD_CONSOLE,
 };
 
 static int sprd_probe_dt_alias(int index, struct device *dev)
@@ -723,6 +721,13 @@ static int sprd_probe(struct platform_device *pdev)
 	up->irq = irq;
 
 	if (!sprd_ports_num) {
+		ret = uart_allocate_console_dfl(&sprd_uart_driver,
+						&sprd_cons_ops,
+						SPRD_TTY_NAME,
+						SERIAL_SPRD_CONSOLE);
+		if (ret)
+			return ret;
+
 		ret = uart_register_driver(&sprd_uart_driver);
 		if (ret < 0) {
 			pr_err("Failed to register SPRD-UART driver\n");

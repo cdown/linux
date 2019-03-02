@@ -300,11 +300,16 @@ static void btext_console_write(struct console *con, const char *s,
 	btext_drawtext(s, n);
 }
 
+static const struct console_operations btext_ops = {
+	.write	= btext_console_write,
+};
+
 static struct console btext_console = {
 	.name	= "btext",
-	.write	= btext_console_write,
 	.flags	= CON_PRINTBUFFER | CON_ENABLED | CON_BOOT | CON_ANYTIME,
+	.ops = &btext_ops,
 	.index	= 0,
+	.is_static = 1,
 };
 
 int __init btext_find_display(void)

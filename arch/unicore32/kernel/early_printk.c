@@ -26,11 +26,16 @@ static void early_ocd_write(struct console *con, const char *s, unsigned n)
 	}
 }
 
+static const struct console_operations ocd_ops = {
+	.write =	early_ocd_write,
+};
+
 static struct console early_ocd_console = {
 	.name =		"earlyocd",
-	.write =	early_ocd_write,
 	.flags =	CON_PRINTBUFFER,
+	.ops =		&ocd_ops,
 	.index =	-1,
+	.is_static =	1,
 };
 
 static int __init setup_early_printk(char *buf)

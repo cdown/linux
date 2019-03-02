@@ -194,10 +194,6 @@ struct atmel_uart_port {
 static struct atmel_uart_port atmel_ports[ATMEL_MAX_UART];
 static DECLARE_BITMAP(atmel_ports_in_use, ATMEL_MAX_UART);
 
-#ifdef SUPPORT_SYSRQ
-static struct console atmel_console;
-#endif
-
 #if defined(CONFIG_OF)
 static const struct of_device_id atmel_serial_dt_ids[] = {
 	{ .compatible = "atmel,at91rm9200-usart-serial" },
@@ -2684,17 +2680,11 @@ static int __init atmel_console_setup(struct console *co, char *options)
 
 static struct uart_driver atmel_uart;
 
-static struct console atmel_console = {
-	.name		= ATMEL_DEVICENAME,
+static const struct console_operations atmel_cons_ops = {
 	.write		= atmel_console_write,
 	.device		= uart_console_device,
 	.setup		= atmel_console_setup,
-	.flags		= CON_PRINTBUFFER,
-	.index		= -1,
-	.data		= &atmel_uart,
 };
-
-#define ATMEL_CONSOLE_DEVICE	(&atmel_console)
 
 static inline bool atmel_is_console_port(struct uart_port *port)
 {
@@ -2702,7 +2692,7 @@ static inline bool atmel_is_console_port(struct uart_port *port)
 }
 
 #else
-#define ATMEL_CONSOLE_DEVICE	NULL
+static const struct console_operations atmel_cons_ops;
 
 static inline bool atmel_is_console_port(struct uart_port *port)
 {
@@ -2717,7 +2707,6 @@ static struct uart_driver atmel_uart = {
 	.major		= SERIAL_ATMEL_MAJOR,
 	.minor		= MINOR_START,
 	.nr		= ATMEL_MAX_UART,
-	.cons		= ATMEL_CONSOLE_DEVICE,
 };
 
 #ifdef CONFIG_PM
@@ -2933,7 +2922,7 @@ static int atmel_serial_probe(struct platform_device *pdev)
 
 #ifdef CONFIG_SERIAL_ATMEL_CONSOLE
 	if (atmel_is_console_port(&atmel_port->uart)
-			&& ATMEL_CONSOLE_DEVICE->flags & CON_ENABLED) {
+			&& atmel_uart.cons->flags & CON_ENABLED) {
 		/*
 		 * The serial core enabled the clock for us, so undo
 		 * the clk_prepare_enable() in atmel_console_setup()
@@ -3035,14 +3024,24 @@ static int __init atmel_serial_init(void)
 {
 	int ret;
 
-	ret = uart_register_driver(&atmel_uart);
+	ret = uart_allocate_console_dfl(&atmel_uart, &atmel_cons_ops,
+					ATMEL_DEVICENAME,
+					SERIAL_ATMEL_CONSOLE);
 	if (ret)
 		return ret;
 
+	ret = uart_register_driver(&atmel_uart);
+	if (ret)
+		goto out;
+
 	ret = platform_driver_register(&atmel_serial_driver);
 	if (ret)
-		uart_unregister_driver(&atmel_uart);
+		goto out_unregister;
 
+out_unregister:
+	uart_unregister_driver(&atmel_uart);
+out:
+	uart_put_console(&atmel_uart);
 	return ret;
 }
 device_initcall(atmel_serial_init);

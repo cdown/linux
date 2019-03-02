@@ -266,14 +266,20 @@ srm_console_setup(struct console *co, char *options)
 	return 0;
 }
 
-static struct console srmcons = {
-	.name		= "srm",
+static const struct console_operations srmcons_cons_ops = {
 	.write		= srm_console_write,
 	.device		= srm_console_device,
 	.setup		= srm_console_setup,
+};
+
+static struct console srmcons = {
+	.name		= "srm",
+	.ops		= &srmcons_cons_ops,
 	.flags		= CON_PRINTBUFFER | CON_BOOT,
 	.index		= -1,
+	.is_static	= 1,
 };
+
 
 void __init
 register_srm_console(void)

@@ -31,10 +31,10 @@ static int show_console_dev(struct seq_file *m, void *v)
 	unsigned int a;
 	dev_t dev = 0;
 
-	if (con->device) {
+	if (con->ops->device) {
 		const struct tty_driver *driver;
 		int index;
-		driver = con->device(con, &index);
+		driver = con->ops->device(con, &index);
 		if (driver) {
 			dev = MKDEV(driver->major, driver->minor_start);
 			dev += index;
@@ -49,9 +49,9 @@ static int show_console_dev(struct seq_file *m, void *v)
 	seq_setwidth(m, 21 - 1);
 	seq_printf(m, "%s%d", con->name, con->index);
 	seq_pad(m, ' ');
-	seq_printf(m, "%c%c%c (%s)", con->read ? 'R' : '-',
-			con->write ? 'W' : '-', con->unblank ? 'U' : '-',
-			flags);
+	seq_printf(m, "%c%c%c (%s)", con->ops->read ? 'R' : '-',
+			con->ops->write ? 'W' : '-',
+			con->ops->unblank ? 'U' : '-', flags);
 	if (dev)
 		seq_printf(m, " %4d:%d", MAJOR(dev), MINOR(dev));
 

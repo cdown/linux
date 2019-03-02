@@ -857,11 +857,11 @@ static void lp_console_write(struct console *co, const char *s,
 	parport_release(dev);
 }
 
-static struct console lpcons = {
-	.name		= "lp",
+static const struct console_operations lp_cons_ops = {
 	.write		= lp_console_write,
-	.flags		= CON_PRINTBUFFER,
 };
+
+static struct console *lpcons;
 
 #endif /* console on line printer */
 
@@ -921,6 +921,11 @@ static int lp_register(int nr, struct parport *port)
 						      &ppdev_cb, nr);
 	if (lp_table[nr].dev == NULL)
 		return 1;
+
+	lpcons = allocate_console_dfl(&lp_cons_ops, "lp", NULL);
+	if (!lpcons)
+		return -ENOMEM;
+
 	lp_table[nr].flags |= LP_EXIST;
 
 	if (reset)
@@ -935,7 +940,7 @@ static int lp_register(int nr, struct parport *port)
 #ifdef CONFIG_LP_CONSOLE
 	if (!nr) {
 		if (port->modes & PARPORT_MODE_SAFEININT) {
-			register_console(&lpcons);
+			register_console(lpcons);
 			console_registered = port;
 			printk(KERN_INFO "lp%d: console ready\n", CONSOLE_LP);
 		} else
@@ -989,8 +994,9 @@ static void lp_detach(struct parport *port)
 	/* Write this some day. */
 #ifdef CONFIG_LP_CONSOLE
 	if (console_registered == port) {
-		unregister_console(&lpcons);
+		unregister_console(lpcons);
 		console_registered = NULL;
+		put_device(&lpcons->dev);
 	}
 #endif /* CONFIG_LP_CONSOLE */
 
@@ -1105,7 +1111,8 @@ static void lp_cleanup_module(void)
 	parport_unregister_driver(&lp_driver);
 
 #ifdef CONFIG_LP_CONSOLE
-	unregister_console(&lpcons);
+	unregister_console(lpcons);
+	put_device(&lpcons->dev);
 #endif
 
 	unregister_chrdev(LP_MAJOR, "lp");

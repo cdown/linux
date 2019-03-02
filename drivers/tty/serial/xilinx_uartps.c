@@ -1120,6 +1120,10 @@ static void cdns_early_write(struct console *con, const char *s,
 	uart_console_write(&dev->port, s, n, cdns_uart_console_putchar);
 }
 
+static const struct console_operations cdns_early_cons_ops = {
+	.write = cdns_early_write,
+};
+
 static int __init cdns_early_console_setup(struct earlycon_device *device,
 					   const char *opt)
 {
@@ -1151,8 +1155,7 @@ static int __init cdns_early_console_setup(struct earlycon_device *device,
 		writel(bdiv, port->membase + CDNS_UART_BAUDDIV);
 	}
 
-	device->con->write = cdns_early_write;
-
+	device->con->ops = &cdns_early_cons_ops;
 	return 0;
 }
 OF_EARLYCON_DECLARE(cdns, "xlnx,xuartps", cdns_early_console_setup);
@@ -1238,6 +1241,15 @@ static int cdns_uart_console_setup(struct console *co, char *options)
 
 	return uart_set_options(port, co, baud, parity, bits, flow);
 }
+
+static const struct console_operations cdns_cons_ops = {
+	.write = cdns_uart_console_write,
+	.device = uart_console_device,
+	.setup = cdns_uart_console_setup,
+};
+
+#else
+static const struct console_operations cdns_cons_ops;
 #endif /* CONFIG_SERIAL_XILINX_PS_UART_CONSOLE */
 
 #ifdef CONFIG_PM_SLEEP
@@ -1468,9 +1480,6 @@ static int cdns_uart_probe(struct platform_device *pdev)
 	const struct of_device_id *match;
 	struct uart_driver *cdns_uart_uart_driver;
 	char *driver_name;
-#ifdef CONFIG_SERIAL_XILINX_PS_UART_CONSOLE
-	struct console *cdns_uart_console;
-#endif
 
 	cdns_uart_data = devm_kzalloc(&pdev->dev, sizeof(*cdns_uart_data),
 			GFP_KERNEL);
@@ -1505,24 +1514,12 @@ static int cdns_uart_probe(struct platform_device *pdev)
 	cdns_uart_uart_driver->minor = cdns_uart_data->id;
 	cdns_uart_uart_driver->nr = 1;
 
-#ifdef CONFIG_SERIAL_XILINX_PS_UART_CONSOLE
-	cdns_uart_console = devm_kzalloc(&pdev->dev, sizeof(*cdns_uart_console),
-					 GFP_KERNEL);
-	if (!cdns_uart_console) {
-		rc = -ENOMEM;
+	rc = uart_allocate_console(cdns_uart_uart_driver, &cdns_cons_ops,
+				   driver_name, CON_PRINTBUFFER,
+				   cdns_uart_data->id,
+				   SERIAL_XILINX_PS_UART_CONSOLE);
+	if (rc)
 		goto err_out_id;
-	}
-
-	strncpy(cdns_uart_console->name, CDNS_UART_TTY_NAME,
-		sizeof(cdns_uart_console->name));
-	cdns_uart_console->index = cdns_uart_data->id;
-	cdns_uart_console->write = cdns_uart_console_write;
-	cdns_uart_console->device = uart_console_device;
-	cdns_uart_console->setup = cdns_uart_console_setup;
-	cdns_uart_console->flags = CON_PRINTBUFFER;
-	cdns_uart_console->data = cdns_uart_uart_driver;
-	cdns_uart_uart_driver->cons = cdns_uart_console;
-#endif
 
 	rc = uart_register_driver(cdns_uart_uart_driver);
 	if (rc < 0) {
@@ -1669,6 +1666,7 @@ err_out_clk_dis_pclk:
 	clk_disable_unprepare(cdns_uart_data->pclk);
 err_out_unregister_driver:
 	uart_unregister_driver(cdns_uart_data->cdns_uart_driver);
+	uart_put_console(cdns_uart_uart_driver);
 err_out_id:
 	mutex_lock(&bitmap_lock);
 	if (cdns_uart_data->id < MAX_UART_INSTANCES)

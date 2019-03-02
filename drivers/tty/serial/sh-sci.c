@@ -3049,21 +3049,22 @@ static int serial_console_setup(struct console *co, char *options)
 	return uart_set_options(port, co, baud, parity, bits, flow);
 }
 
-static struct console serial_console = {
-	.name		= "ttySC",
+static const struct console_operations sci_cons_ops = {
 	.device		= uart_console_device,
 	.write		= serial_console_write,
 	.setup		= serial_console_setup,
-	.flags		= CON_PRINTBUFFER,
-	.index		= -1,
-	.data		= &sci_uart_driver,
+};
+
+static const struct console_operations early_sci_cons_ops = {
+	.write          = serial_console_write,
 };
 
 static struct console early_serial_console = {
 	.name           = "early_ttySC",
-	.write          = serial_console_write,
+	.ops		= &early_sci_cons_ops,
 	.flags          = CON_PRINTBUFFER,
 	.index		= -1,
+	.is_static	= 1,
 };
 
 static char early_serial_buf[32];
@@ -3088,15 +3089,14 @@ static int sci_probe_earlyprintk(struct platform_device *pdev)
 	return 0;
 }
 
-#define SCI_CONSOLE	(&serial_console)
-
 #else
+
 static inline int sci_probe_earlyprintk(struct platform_device *pdev)
 {
 	return -EINVAL;
 }
 
-#define SCI_CONSOLE	NULL
+static const struct console_operations sci_cons_ops;
 
 #endif /* CONFIG_SERIAL_SH_SCI_CONSOLE || CONFIG_SERIAL_SH_SCI_EARLYCON */
 
@@ -3110,7 +3110,6 @@ static struct uart_driver sci_uart_driver = {
 	.major		= SCI_MAJOR,
 	.minor		= SCI_MINOR_START,
 	.nr		= SCI_NPORTS,
-	.cons		= SCI_CONSOLE,
 };
 
 static int sci_remove(struct platform_device *dev)
@@ -3245,21 +3244,30 @@ static int sci_probe_single(struct platform_device *dev,
 
 	mutex_lock(&sci_uart_registration_lock);
 	if (!sci_uart_driver.state) {
-		ret = uart_register_driver(&sci_uart_driver);
+		ret = uart_allocate_console_dfl(&sci_uart_driver, &sci_cons_ops,
+						"ttySC", SERIAL_SH_SCI_CONSOLE);
 		if (ret) {
 			mutex_unlock(&sci_uart_registration_lock);
 			return ret;
+		}
+
+		ret = uart_register_driver(&sci_uart_driver);
+		if (ret) {
+			mutex_unlock(&sci_uart_registration_lock);
+			goto out;
 		}
 	}
 	mutex_unlock(&sci_uart_registration_lock);
 
 	ret = sci_init_single(dev, sciport, index, p, false);
 	if (ret)
-		return ret;
+		goto out_unregister;
 
 	sciport->gpios = mctrl_gpio_init(&sciport->port, 0);
-	if (IS_ERR(sciport->gpios) && PTR_ERR(sciport->gpios) != -ENOSYS)
-		return PTR_ERR(sciport->gpios);
+	if (IS_ERR(sciport->gpios) && PTR_ERR(sciport->gpios) != -ENOSYS) {
+		ret = PTR_ERR(sciport->gpios);
+		goto out_unregister;
+	};
 
 	if (sciport->has_rtscts) {
 		if (!IS_ERR_OR_NULL(mctrl_gpio_to_gpiod(sciport->gpios,
@@ -3267,18 +3275,25 @@ static int sci_probe_single(struct platform_device *dev,
 		    !IS_ERR_OR_NULL(mctrl_gpio_to_gpiod(sciport->gpios,
 							UART_GPIO_RTS))) {
 			dev_err(&dev->dev, "Conflicting RTS/CTS config\n");
-			return -EINVAL;
+			ret = -EINVAL;
+			goto out_unregister;
 		}
 		sciport->port.flags |= UPF_HARD_FLOW;
 	}
 
 	ret = uart_add_one_port(&sci_uart_driver, &sciport->port);
-	if (ret) {
-		sci_cleanup_single(sciport);
-		return ret;
-	}
+	if (ret)
+		goto out_cleanup;
 
 	return 0;
+
+out_cleanup:
+	sci_cleanup_single(sciport);
+out_unregister:
+	uart_unregister_driver(&sci_uart_driver);
+out:
+	uart_put_console(&sci_uart_driver);
+	return ret;
 }
 
 static int sci_probe(struct platform_device *dev)
@@ -3415,7 +3430,7 @@ static int __init early_console_setup(struct earlycon_device *device,
 	sci_serial_out(&sci_ports[0].port, SCSCR,
 		       SCSCR_RE | SCSCR_TE | port_cfg.scscr);
 
-	device->con->write = serial_console_write;
+	device->con->ops = &early_sci_cons_ops;
 	return 0;
 }
 static int __init sci_early_console_setup(struct earlycon_device *device,

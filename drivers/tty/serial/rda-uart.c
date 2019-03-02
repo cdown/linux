@@ -654,20 +654,23 @@ static int rda_uart_console_setup(struct console *co, char *options)
 	return uart_set_options(&rda_port->port, co, baud, parity, bits, flow);
 }
 
-static struct console rda_uart_console = {
-	.name = RDA_UART_DEV_NAME,
+static const struct console_operations rda_cons_ops = {
 	.write = rda_uart_console_write,
 	.device = uart_console_device,
 	.setup = rda_uart_console_setup,
-	.flags = CON_PRINTBUFFER,
-	.index = -1,
-	.data = &rda_uart_driver,
 };
+
+static struct console __initdata *rda_uart_console;
 
 static int __init rda_uart_console_init(void)
 {
-	register_console(&rda_uart_console);
+	rda_uart_console = allocate_console_dfl(&rda_cons_ops,
+						RDA_UART_DEV_NAME,
+						&rda_uart_driver);
+	if (!rda_uart_console)
+		return -ENOMEM;
 
+	register_console(rda_uart_console);
 	return 0;
 }
 console_initcall(rda_uart_console_init);
@@ -681,21 +684,24 @@ static void rda_uart_early_console_write(struct console *co,
 	rda_uart_port_write(&dev->port, s, count);
 }
 
+static const struct console_operations rda_early_cons_ops = {
+	.write = rda_uart_early_console_write,
+};
+
 static int __init
 rda_uart_early_console_setup(struct earlycon_device *device, const char *opt)
 {
 	if (!device->port.membase)
 		return -ENODEV;
 
-	device->con->write = rda_uart_early_console_write;
-
+	device->con->ops = &rda_early_cons_ops;
 	return 0;
 }
 
 OF_EARLYCON_DECLARE(rda, "rda,8810pl-uart",
 		    rda_uart_early_console_setup);
 
-#define RDA_UART_CONSOLE (&rda_uart_console)
+#define RDA_UART_CONSOLE (rda_uart_console)
 #else
 #define RDA_UART_CONSOLE NULL
 #endif /* CONFIG_SERIAL_RDA_CONSOLE */
@@ -705,7 +711,6 @@ static struct uart_driver rda_uart_driver = {
 	.driver_name = "rda-uart",
 	.dev_name = RDA_UART_DEV_NAME,
 	.nr = RDA_UART_PORT_NUM,
-	.cons = RDA_UART_CONSOLE,
 };
 
 static const struct of_device_id rda_uart_dt_matches[] = {
@@ -806,6 +811,7 @@ static int __init rda_uart_init(void)
 {
 	int ret;
 
+	rda_uart_driver.cons = RDA_UART_CONSOLE;
 	ret = uart_register_driver(&rda_uart_driver);
 	if (ret)
 		return ret;

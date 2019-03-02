@@ -1263,23 +1263,14 @@ static int __init sunzilog_console_setup(struct console *con, char *options)
 	return 0;
 }
 
-static struct console sunzilog_console_ops = {
-	.name	=	"ttyS",
+static const struct console_operations sunzilog_cons_ops = {
 	.write	=	sunzilog_console_write,
 	.device	=	uart_console_device,
 	.setup	=	sunzilog_console_setup,
-	.flags	=	CON_PRINTBUFFER,
-	.index	=	-1,
-	.data   =	&sunzilog_reg,
 };
 
-static inline struct console *SUNZILOG_CONSOLE(void)
-{
-	return &sunzilog_console_ops;
-}
-
 #else
-#define SUNZILOG_CONSOLE()	(NULL)
+static const struct console_operations sunzilog_cons_ops;
 #endif
 
 static void sunzilog_init_kbdms(struct uart_sunzilog_port *up)
@@ -1466,20 +1457,29 @@ static int zs_probe(struct platform_device *op)
 	sunzilog_init_hw(&up[1]);
 
 	if (!keyboard_mouse) {
-		if (sunserial_console_match(SUNZILOG_CONSOLE(), op->dev.of_node,
+		err = uart_allocate_console_dfl(&sunzilog_reg,
+						&sunzilog_cons_ops, "ttyS",
+						SERIAL_SUNZILOG_CONSOLE);
+		if (err)
+			return err;
+
+		if (sunserial_console_match(sunzilog_reg.cons, op->dev.of_node,
 					    &sunzilog_reg, up[0].port.line,
 					    false))
 			up->flags |= SUNZILOG_FLAG_IS_CONS;
+
 		err = uart_add_one_port(&sunzilog_reg, &up[0].port);
 		if (err) {
 			of_iounmap(&op->resource[0],
 				   rp, sizeof(struct zilog_layout));
 			return err;
 		}
-		if (sunserial_console_match(SUNZILOG_CONSOLE(), op->dev.of_node,
+
+		if (sunserial_console_match(sunzilog_reg.cons, op->dev.of_node,
 					    &sunzilog_reg, up[1].port.line,
 					    false))
 			up->flags |= SUNZILOG_FLAG_IS_CONS;
+
 		err = uart_add_one_port(&sunzilog_reg, &up[1].port);
 		if (err) {
 			uart_remove_one_port(&sunzilog_reg, &up[0].port);

@@ -1779,12 +1779,9 @@ static struct tty_driver *serial_console_device(struct console *c, int *index)
 	return serial_driver;
 }
 
-static struct console sercons = {
-	.name =		"ttyS",
+static const struct console_operations ami_cons_ops = {
 	.write =	serial_console_write,
 	.device =	serial_console_device,
-	.flags =	CON_PRINTBUFFER,
-	.index =	-1,
 };
 
 /*
@@ -1792,10 +1789,16 @@ static struct console sercons = {
  */
 static int __init amiserial_console_init(void)
 {
+	struct console *sercons;
+
 	if (!MACH_IS_AMIGA)
 		return -ENODEV;
 
-	register_console(&sercons);
+	sercons = allocate_console_dfl(&ami_cons_ops, "ttyS", NULL);
+	if (!sercons)
+		return -ENOMEM;
+
+	register_console(sercons);
 	return 0;
 }
 console_initcall(amiserial_console_init);

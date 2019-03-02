@@ -31,12 +31,9 @@ static int prom_console_setup(struct console *co, char *options)
 	return !(prom_flags & PROM_FLAG_USE_AS_CONSOLE);
 }
 
-static struct console arc_cons = {
-	.name		= "arc",
+static const struct console_operations arc_ops = {
 	.write		= prom_console_write,
 	.setup		= prom_console_setup,
-	.flags		= CON_PRINTBUFFER,
-	.index		= -1,
 };
 
 /*
@@ -45,8 +42,13 @@ static struct console arc_cons = {
 
 static int __init arc_console_init(void)
 {
-	register_console(&arc_cons);
+	struct console *arc_cons;
 
+	arc_cons = allocate_console_dfl(&arc_ops, "arc", NULL);
+	if (!arc_cons)
+		return -ENOMEM;
+
+	register_console(arc_cons);
 	return 0;
 }
 console_initcall(arc_console_init);

@@ -479,25 +479,28 @@ static int __init altera_uart_console_setup(struct console *co, char *options)
 
 static struct uart_driver altera_uart_driver;
 
-static struct console altera_uart_console = {
-	.name	= "ttyAL",
+static const struct console_operations altera_cons_ops = {
 	.write	= altera_uart_console_write,
 	.device	= uart_console_device,
 	.setup	= altera_uart_console_setup,
-	.flags	= CON_PRINTBUFFER,
-	.index	= -1,
-	.data	= &altera_uart_driver,
 };
+
+static struct console __initdata *altera_uart_console;
 
 static int __init altera_uart_console_init(void)
 {
-	register_console(&altera_uart_console);
+	altera_uart_console = allocate_console_dfl(&altera_cons_ops, "ttyAL",
+						   &altera_uart_driver);
+	if (!altera_uart_console)
+		return -ENOMEM;
+
+	register_console(altera_uart_console);
 	return 0;
 }
 
 console_initcall(altera_uart_console_init);
 
-#define	ALTERA_UART_CONSOLE	(&altera_uart_console)
+#define	ALTERA_UART_CONSOLE	(altera_uart_console)
 
 static void altera_uart_earlycon_write(struct console *co, const char *s,
 				       unsigned int count)
@@ -506,6 +509,10 @@ static void altera_uart_earlycon_write(struct console *co, const char *s,
 
 	uart_console_write(&dev->port, s, count, altera_uart_console_putc);
 }
+
+static const struct console_operations altera_early_cons_ops = {
+	.write = altera_uart_earlycon_write,
+};
 
 static int __init altera_uart_earlycon_setup(struct earlycon_device *dev,
 					     const char *options)
@@ -525,7 +532,7 @@ static int __init altera_uart_earlycon_setup(struct earlycon_device *dev,
 		altera_uart_writel(port, baudclk, ALTERA_UART_DIVISOR_REG);
 	}
 
-	dev->con->write = altera_uart_earlycon_write;
+	dev->con->ops = &altera_early_cons_ops;
 	return 0;
 }
 
@@ -547,7 +554,6 @@ static struct uart_driver altera_uart_driver = {
 	.major		= SERIAL_ALTERA_MAJOR,
 	.minor		= SERIAL_ALTERA_MINOR,
 	.nr		= CONFIG_SERIAL_ALTERA_UART_MAXPORTS,
-	.cons		= ALTERA_UART_CONSOLE,
 };
 
 static int altera_uart_probe(struct platform_device *pdev)
@@ -653,6 +659,7 @@ static int __init altera_uart_init(void)
 {
 	int rc;
 
+	altera_uart_driver.cons	= ALTERA_UART_CONSOLE;
 	rc = uart_register_driver(&altera_uart_driver);
 	if (rc)
 		return rc;

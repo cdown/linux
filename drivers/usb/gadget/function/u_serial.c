@@ -897,7 +897,7 @@ static struct tty_driver *gs_tty_driver;
 #ifdef CONFIG_U_SERIAL_CONSOLE
 
 static struct gscons_info gscons_info;
-static struct console gserial_cons;
+static struct console *gserial_cons;
 
 static struct usb_request *gs_request_new(struct usb_ep *ep)
 {
@@ -953,7 +953,7 @@ static int gs_console_connect(int port_num)
 	struct gs_port *port;
 	struct usb_ep *ep;
 
-	if (port_num != gserial_cons.index) {
+	if (port_num != gserial_cons->index) {
 		pr_err("%s: port num [%d] is not support console\n",
 		       __func__, port_num);
 		return -ENXIO;
@@ -1090,26 +1090,22 @@ static struct tty_driver *gs_console_device(struct console *co, int *index)
 	return *p;
 }
 
-static struct console gserial_cons = {
-	.name =		"ttyGS",
+static const struct console_operations gserial_cons_ops = {
 	.write =	gs_console_write,
 	.device =	gs_console_device,
 	.setup =	gs_console_setup,
-	.flags =	CON_PRINTBUFFER,
-	.index =	-1,
-	.data =		&gs_tty_driver,
 };
 
 static void gserial_console_init(void)
 {
-	register_console(&gserial_cons);
+	register_console(gserial_cons);
 }
 
 static void gserial_console_exit(void)
 {
 	struct gscons_info *info = &gscons_info;
 
-	unregister_console(&gserial_cons);
+	unregister_console(gserial_cons);
 	if (!IS_ERR_OR_NULL(info->console_thread))
 		kthread_stop(info->console_thread);
 	kfifo_free(&info->con_buf);
@@ -1437,6 +1433,12 @@ static int userial_init(void)
 		goto fail;
 	}
 
+	status = -ENOMEM;
+	gserial_cons = allocate_console_dfl(&gserial_cons_ops, "ttyGS",
+					    &gs_tty_driver);
+	if (!gserial_cons)
+		goto fail;
+
 	pr_debug("%s: registered %d ttyGS* device%s\n", __func__,
 			MAX_U_SERIAL_PORTS,
 			(MAX_U_SERIAL_PORTS == 1) ? "" : "s");
@@ -1454,6 +1456,8 @@ static void userial_cleanup(void)
 	tty_unregister_driver(gs_tty_driver);
 	put_tty_driver(gs_tty_driver);
 	gs_tty_driver = NULL;
+
+	put_console(gserial_cons);
 }
 module_exit(userial_cleanup);
 

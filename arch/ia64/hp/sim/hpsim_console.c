@@ -30,13 +30,18 @@ static int simcons_init (struct console *, char *);
 static void simcons_write (struct console *, const char *, unsigned);
 static struct tty_driver *simcons_console_device (struct console *, int *);
 
-static struct console hpsim_cons = {
-	.name =		"simcons",
+static const struct console_operations hpsim_cons_ops = {
 	.write =	simcons_write,
 	.device =	simcons_console_device,
 	.setup =	simcons_init,
+};
+
+static struct console hpsim_cons = {
+	.name =		"simcons",
 	.flags =	CON_PRINTBUFFER,
+	.ops =		&hpsim_cons_ops,
 	.index =	-1,
+	.is_static =	1,
 };
 
 static int

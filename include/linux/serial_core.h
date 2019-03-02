@@ -427,6 +427,25 @@ int uart_remove_one_port(struct uart_driver *reg, struct uart_port *port);
 int uart_match_port(struct uart_port *port1, struct uart_port *port2);
 
 /*
+ * This ugliness removes the need for #ifdef boilerplate in UART drivers which
+ * allow their console functionality to be disabled via Kconfig.
+ */
+#define uart_allocate_console(drv, ops, name, flags, idx, kcfg)		    \
+({									    \
+	int __retval = 0;						    \
+	if (IS_ENABLED(CONFIG_##kcfg)) {				    \
+		(drv)->cons = allocate_console(ops, name, flags, idx, drv); \
+		__retval = (drv)->cons ? 0 : -ENOMEM;			    \
+	}								    \
+	__retval;							    \
+})
+
+#define uart_allocate_console_dfl(drv, ops, name, kcfg) \
+	uart_allocate_console(drv, ops, name, CON_PRINTBUFFER, -1, kcfg)
+
+#define uart_put_console(drv) put_console((drv)->cons)
+
+/*
  * Power Management
  */
 int uart_suspend_port(struct uart_driver *reg, struct uart_port *port);

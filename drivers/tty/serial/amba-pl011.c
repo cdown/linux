@@ -2400,18 +2400,13 @@ static int __init pl011_console_match(struct console *co, char *name, int idx,
 }
 
 static struct uart_driver amba_reg;
-static struct console amba_console = {
-	.name		= "ttyAMA",
+
+static const struct console_operations amba_cons_ops = {
 	.write		= pl011_console_write,
 	.device		= uart_console_device,
 	.setup		= pl011_console_setup,
 	.match		= pl011_console_match,
-	.flags		= CON_PRINTBUFFER | CON_ANYTIME,
-	.index		= -1,
-	.data		= &amba_reg,
 };
-
-#define AMBA_CONSOLE	(&amba_console)
 
 static void qdf2400_e44_putc(struct uart_port *port, int c)
 {
@@ -2428,6 +2423,10 @@ static void qdf2400_e44_early_write(struct console *con, const char *s, unsigned
 
 	uart_console_write(&dev->port, s, n, qdf2400_e44_putc);
 }
+
+static const struct console_operations qdf2400_early_cons_ops = {
+	.write = qdf2400_e44_early_write,
+};
 
 static void pl011_putc(struct uart_port *port, int c)
 {
@@ -2448,6 +2447,10 @@ static void pl011_early_write(struct console *con, const char *s, unsigned n)
 	uart_console_write(&dev->port, s, n, pl011_putc);
 }
 
+static const struct console_operations pl011_early_cons_ops = {
+	.write = pl011_early_write,
+};
+
 /*
  * On non-ACPI systems, earlycon is enabled by specifying
  * "earlycon=pl011,<address>" on the kernel command line.
@@ -2466,8 +2469,7 @@ static int __init pl011_early_console_setup(struct earlycon_device *device,
 	if (!device->port.membase)
 		return -ENODEV;
 
-	device->con->write = pl011_early_write;
-
+	device->con->ops = &pl011_early_cons_ops;
 	return 0;
 }
 OF_EARLYCON_DECLARE(pl011, "arm,pl011", pl011_early_console_setup);
@@ -2490,13 +2492,13 @@ qdf2400_e44_early_console_setup(struct earlycon_device *device,
 	if (!device->port.membase)
 		return -ENODEV;
 
-	device->con->write = qdf2400_e44_early_write;
+	device->con->ops = &qdf2400_early_cons_ops;
 	return 0;
 }
 EARLYCON_DECLARE(qdf2400_e44, qdf2400_e44_early_console_setup);
 
 #else
-#define AMBA_CONSOLE	NULL
+static const struct console_operations amba_cons_ops;
 #endif
 
 static struct uart_driver amba_reg = {
@@ -2506,7 +2508,6 @@ static struct uart_driver amba_reg = {
 	.major			= SERIAL_AMBA_MAJOR,
 	.minor			= SERIAL_AMBA_MINOR,
 	.nr			= UART_NR,
-	.cons			= AMBA_CONSOLE,
 };
 
 static int pl011_probe_dt_alias(int index, struct device *dev)
@@ -2602,18 +2603,28 @@ static int pl011_register_port(struct uart_amba_port *uap)
 	pl011_write(0xffff, uap, REG_ICR);
 
 	if (!amba_reg.state) {
+		ret = uart_allocate_console(&amba_reg, &amba_cons_ops, "ttyAMA",
+					    CON_PRINTBUFFER | CON_ANYTIME, -1,
+					    SERIAL_AMBA_PL011_CONSOLE);
+		if (ret < 0)
+			goto out;
+
 		ret = uart_register_driver(&amba_reg);
-		if (ret < 0) {
-			dev_err(uap->port.dev,
-				"Failed to register AMBA-PL011 driver\n");
-			return ret;
-		}
+		if (ret < 0)
+			goto out;
 	}
 
 	ret = uart_add_one_port(&amba_reg, &uap->port);
 	if (ret)
-		pl011_unregister_port(uap);
+		goto out_unregister;
 
+	return 0;
+
+out_unregister:
+	pl011_unregister_port(uap);
+out:
+	uart_put_console(&amba_reg);
+	dev_err(uap->port.dev, "Failed to register AMBA-PL011 driver\n");
 	return ret;
 }
 

@@ -541,20 +541,14 @@ static int __init vt8500_console_setup(struct console *co, char *options)
 				 co, baud, parity, bits, flow);
 }
 
-static struct console vt8500_console = {
-	.name = "ttyWMT",
+static const struct console_operations vt8500_cons_ops = {
 	.write = vt8500_console_write,
 	.device = uart_console_device,
 	.setup = vt8500_console_setup,
-	.flags = CON_PRINTBUFFER,
-	.index = -1,
-	.data = &vt8500_uart_driver,
 };
 
-#define VT8500_CONSOLE	(&vt8500_console)
-
 #else
-#define VT8500_CONSOLE	NULL
+static const struct console_operations vt8500_cons_ops;
 #endif
 
 #ifdef CONFIG_CONSOLE_POLL
@@ -612,7 +606,6 @@ static struct uart_driver vt8500_uart_driver = {
 	.driver_name	= "vt8500_serial",
 	.dev_name	= "ttyWMT",
 	.nr		= 6,
-	.cons		= VT8500_CONSOLE,
 };
 
 static unsigned int vt8500_flags; /* none required so far */
@@ -734,15 +727,23 @@ static int __init vt8500_serial_init(void)
 {
 	int ret;
 
-	ret = uart_register_driver(&vt8500_uart_driver);
-	if (unlikely(ret))
+	ret = uart_allocate_console_dfl(&vt8500_uart_driver, &vt8500_cons_ops,
+					"ttyWMT", SERIAL_VT8500_CONSOLE);
+	if (ret)
 		return ret;
 
-	ret = platform_driver_register(&vt8500_platform_driver);
-
+	ret = uart_register_driver(&vt8500_uart_driver);
 	if (unlikely(ret))
-		uart_unregister_driver(&vt8500_uart_driver);
+		goto out;
 
+	ret = platform_driver_register(&vt8500_platform_driver);
+	if (unlikely(ret))
+		goto out_unregister;
+
+out_unregister:
+	uart_unregister_driver(&vt8500_uart_driver);
+out:
+	uart_put_console(&vt8500_uart_driver);
 	return ret;
 }
 device_initcall(vt8500_serial_init);

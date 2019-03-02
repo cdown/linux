@@ -730,16 +730,13 @@ static int sn_sal_console_setup(struct console *, char *);
 static struct uart_driver sal_console_uart;
 extern struct tty_driver *uart_console_device(struct console *, int *);
 
-static struct console sal_console = {
-	.name = DEVICE_NAME,
+static const struct console_operations sal_cons_ops = {
 	.write = sn_sal_console_write,
 	.device = uart_console_device,
 	.setup = sn_sal_console_setup,
-	.index = -1,		/* unspecified */
-	.data = &sal_console_uart,
 };
 
-#define SAL_CONSOLE	&sal_console
+static struct console __initdata *sal_console;
 
 static struct uart_driver sal_console_uart = {
 	.owner = THIS_MODULE,
@@ -748,7 +745,6 @@ static struct uart_driver sal_console_uart = {
 	.major = 0,		/* major/minor set at registration time per USE_DYNAMIC_MINOR */
 	.minor = 0,
 	.nr = 1,		/* one port */
-	.cons = SAL_CONSOLE,
 };
 
 /**
@@ -768,6 +764,7 @@ static int __init sn_sal_init(void)
 		return 0;
 
 	printk(KERN_INFO "sn_console: Console driver init\n");
+	sal_console_uart.cons = sal_console;
 
 	if (USE_DYNAMIC_MINOR == 1) {
 		misc.minor = MISC_DYNAMIC_MINOR;
@@ -980,11 +977,17 @@ sn_sal_console_write_early(struct console *co, const char *s, unsigned count)
 
 /* Used for very early console printing - again, before
  * sn_sal_serial_console_init is run */
+
+static const struct console_operations sal_early_cons_ops = {
+	.write = sn_sal_console_write_early,
+};
+
 static struct console sal_console_early __initdata = {
 	.name = "sn_sal",
-	.write = sn_sal_console_write_early,
+	.ops = &sal_early_cons_ops,
 	.flags = CON_PRINTBUFFER,
 	.index = -1,
+	.is_static = 1,
 };
 
 /**
@@ -1024,9 +1027,15 @@ int __init sn_serial_console_early_setup(void)
 static int __init sn_sal_serial_console_init(void)
 {
 	if (ia64_platform_is("sn2")) {
+		sal_console = allocate_console_dfl(&sal_cons_ops, DEVICE_NAME,
+						   &sal_console_uart);
+		if (!sal_console)
+			return -ENOMEM;
+
 		sn_sal_switch_to_asynch(&sal_console_port);
 		DPRINTF("sn_sal_serial_console_init : register console\n");
-		register_console(&sal_console);
+
+		register_console(sal_console);
 		unregister_console(&sal_console_early);
 	}
 	return 0;

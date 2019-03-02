@@ -231,10 +231,15 @@ static __init int early_efi_setup(struct console *con, char *options)
 	return 0;
 }
 
-struct console early_efi_console = {
-	.name =		"earlyefi",
+static const struct console_operations early_efi_ops = {
 	.write =	early_efi_write,
 	.setup =	early_efi_setup,
+};
+
+struct console early_efi_console = {
+	.name =		"earlyefi",
 	.flags =	CON_PRINTBUFFER,
+	.ops =		&early_efi_ops,
 	.index =	-1,
+	.is_static =	1,
 };

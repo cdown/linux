@@ -962,11 +962,16 @@ static void early_dbgp_write(struct console *con, const char *str, u32 n)
 	}
 }
 
+static const struct console_operations early_dbgp_cons_ops = {
+	.write =	early_dbgp_write,
+};
+
 struct console early_dbgp_console = {
 	.name =		"earlydbg",
-	.write =	early_dbgp_write,
+	.ops =		&early_dbgp_cons_ops,
 	.flags =	CON_PRINTBUFFER,
 	.index =	-1,
+	.is_static =	1,
 };
 
 #if IS_ENABLED(CONFIG_USB)

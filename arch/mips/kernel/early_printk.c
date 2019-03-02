@@ -24,11 +24,16 @@ static void early_console_write(struct console *con, const char *s, unsigned n)
 	}
 }
 
+static const struct console_operations early_ops = {
+	.write	= early_console_write,
+};
+
 static struct console early_console_prom = {
 	.name	= "early",
-	.write	= early_console_write,
 	.flags	= CON_PRINTBUFFER | CON_BOOT,
-	.index	= -1
+	.ops = &early_ops,
+	.index	= -1,
+	.is_static = 1,
 };
 
 void __init setup_early_printk(void)

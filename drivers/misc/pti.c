@@ -729,14 +729,13 @@ static int pti_console_setup(struct console *c, char *opts)
  * the tty port is to hook up syslog to it, the tty port
  * will be open for a really long time.
  */
-static struct console pti_console = {
-	.name		= TTYNAME,
+static const struct console_operations pti_cons_ops = {
 	.write		= pti_console_write,
 	.device		= pti_console_device,
 	.setup		= pti_console_setup,
-	.flags		= CON_PRINTBUFFER,
-	.index		= 0,
 };
+
+static struct console *pti_console;
 
 /**
  * pti_port_activate()- Used to start/initialize any items upon
@@ -755,7 +754,7 @@ static struct console pti_console = {
 static int pti_port_activate(struct tty_port *port, struct tty_struct *tty)
 {
 	if (port->tty->index == PTITTY_MINOR_START)
-		console_start(&pti_console);
+		console_start(pti_console);
 	return 0;
 }
 
@@ -772,7 +771,7 @@ static int pti_port_activate(struct tty_port *port, struct tty_struct *tty)
 static void pti_port_shutdown(struct tty_port *port)
 {
 	if (port->tty->index == PTITTY_MINOR_START)
-		console_stop(&pti_console);
+		console_stop(pti_console);
 }
 
 static const struct tty_port_operations tty_port_ops = {
@@ -800,11 +799,15 @@ static int pti_pci_probe(struct pci_dev *pdev,
 		const struct pci_device_id *ent)
 {
 	unsigned int a;
-	int retval = -EINVAL;
+	int retval = -ENOMEM;
 	int pci_bar = 1;
 
 	dev_dbg(&pdev->dev, "%s %s(%d): PTI PCI ID %04x:%04x\n", __FILE__,
 			__func__, __LINE__, pdev->vendor, pdev->device);
+
+	pti_console = allocate_console_dfl(&pti_cons_ops, TTYNAME, NULL);
+	if (!pti_console)
+		goto err;
 
 	retval = misc_register(&pti_char_driver);
 	if (retval) {
@@ -812,7 +815,7 @@ static int pti_pci_probe(struct pci_dev *pdev,
 			__func__, __LINE__);
 		pr_err("%s(%d): Error value returned: %d\n",
 			__func__, __LINE__, retval);
-		goto err;
+		goto err_put_con;
 	}
 
 	retval = pci_enable_device(pdev);
@@ -859,7 +862,7 @@ static int pti_pci_probe(struct pci_dev *pdev,
 		tty_port_register_device(port, pti_tty_driver, a, &pdev->dev);
 	}
 
-	register_console(&pti_console);
+	register_console(pti_console);
 
 	return 0;
 err_rel_reg:
@@ -870,6 +873,8 @@ err_disable_pci:
 	pci_disable_device(pdev);
 err_unreg_misc:
 	misc_deregister(&pti_char_driver);
+err_put_con:
+	put_device(&pti_console->dev);
 err:
 	return retval;
 }
@@ -884,7 +889,8 @@ static void pti_pci_remove(struct pci_dev *pdev)
 	struct pti_dev *drv_data = pci_get_drvdata(pdev);
 	unsigned int a;
 
-	unregister_console(&pti_console);
+	unregister_console(pti_console);
+	put_device(&pti_console->dev);
 
 	for (a = 0; a < PTITTY_MINOR_NUM; a++) {
 		tty_unregister_device(pti_tty_driver, a);

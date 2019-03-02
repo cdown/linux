@@ -869,27 +869,33 @@ static struct notifier_block on_reboot_nb = {
 };
 
 /* Structure needed to register with printk */
-static struct console sclp_vt220_console =
-{
-	.name = SCLP_VT220_CONSOLE_NAME,
+static const struct console_operations sclp_vt220_cons_ops = {
 	.write = sclp_vt220_con_write,
 	.device = sclp_vt220_con_device,
-	.flags = CON_PRINTBUFFER,
-	.index = SCLP_VT220_CONSOLE_INDEX
 };
 
 static int __init
 sclp_vt220_con_init(void)
 {
+	struct console *sclp_vt220_console;
 	int rc;
+
+	sclp_vt220_console = allocate_console_dfl(&sclp_vt220_cons_ops,
+						  SCLP_VT220_CONSOLE_NAME,
+						  NULL);
+	if (!sclp_vt220_console)
+		return -ENOMEM;
+
+	sclp_vt220_console->index = SCLP_VT220_CONSOLE_INDEX;
 
 	rc = __sclp_vt220_init(sclp_console_pages);
 	if (rc)
 		return rc;
+
 	/* Attach linux console */
 	atomic_notifier_chain_register(&panic_notifier_list, &on_panic_nb);
 	register_reboot_notifier(&on_reboot_nb);
-	register_console(&sclp_vt220_console);
+	register_console(sclp_vt220_console);
 	return 0;
 }
 

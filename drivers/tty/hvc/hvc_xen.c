@@ -644,12 +644,17 @@ static void xenboot_write_console(struct console *console, const char *string,
 		domU_write_console(0, string+off, len-off);
 }
 
-struct console xenboot_console = {
-	.name		= "xenboot",
+static const struct console_operations xenboot_cons_ops = {
 	.write		= xenboot_write_console,
 	.setup		= xenboot_setup_console,
+};
+
+struct console xenboot_console = {
+	.name		= "xenboot",
+	.ops		= &xenboot_cons_ops,
 	.flags		= CON_PRINTBUFFER | CON_BOOT | CON_ANYTIME,
 	.index		= -1,
+	.is_static	= 1,
 };
 #endif	/* CONFIG_EARLY_PRINTK */
 
@@ -685,10 +690,14 @@ static void xenboot_earlycon_write(struct console *console,
 	dom0_write_console(0, string, len);
 }
 
+static const struct console_operations xenboot_early_cons_ops = {
+	.write = xenboot_earlycon_write,
+};
+
 static int __init xenboot_earlycon_setup(struct earlycon_device *device,
 					    const char *opt)
 {
-	device->con->write = xenboot_earlycon_write;
+	device->con->ops = &xenboot_early_cons_ops;
 	return 0;
 }
 EARLYCON_DECLARE(xenboot, xenboot_earlycon_setup);

@@ -2960,14 +2960,12 @@ static struct tty_driver *vt_console_device(struct console *c, int *index)
 	return console_driver;
 }
 
-static struct console vt_console_driver = {
-	.name		= "tty",
+static const struct console_operations vt_console_ops = {
 	.write		= vt_console_print,
 	.device		= vt_console_device,
 	.unblank	= unblank_screen,
-	.flags		= CON_PRINTBUFFER,
-	.index		= -1,
 };
+
 #endif
 
 /*
@@ -3285,9 +3283,14 @@ static void vc_init(struct vc_data *vc, unsigned int rows,
 
 static int __init con_init(void)
 {
+	struct console *vt_console_driver;
 	const char *display_desc = NULL;
 	struct vc_data *vc;
 	unsigned int currcons = 0, i;
+
+	vt_console_driver = allocate_console_dfl(&vt_console_ops, "tty", NULL);
+	if (!vt_console_driver)
+		return -ENOMEM;
 
 	console_lock();
 
@@ -3344,7 +3347,8 @@ static int __init con_init(void)
 	console_unlock();
 
 #ifdef CONFIG_VT_CONSOLE
-	register_console(&vt_console_driver);
+	register_console(vt_console_driver);
+	put_console(vt_console_driver);
 #endif
 	return 0;
 }

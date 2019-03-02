@@ -1132,22 +1132,30 @@ static void sirfsoc_uart_console_write(struct console *co, const char *s,
 			sirfsoc_uart_console_putchar);
 }
 
-static struct console sirfsoc_uart_console = {
-	.name		= SIRFSOC_UART_NAME,
+static const struct console_operations sirfsoc_cons_ops = {
 	.device		= uart_console_device,
-	.flags		= CON_PRINTBUFFER,
-	.index		= -1,
 	.write		= sirfsoc_uart_console_write,
 	.setup		= sirfsoc_uart_console_setup,
-	.data           = &sirfsoc_uart_drv,
 };
+
+static struct console __initdata *sirfsoc_uart_console;
 
 static int __init sirfsoc_uart_console_init(void)
 {
-	register_console(&sirfsoc_uart_console);
+	sirfsoc_uart_console = allocate_console_dfl(&sirfsoc_cons_ops,
+						    SIRFSOC_UART_NAME,
+						    &sirfsoc_uart_drv);
+	if (!sirfsoc_uart_console)
+		return -ENOMEM;
+
+	register_console(sirfsoc_uart_console);
 	return 0;
 }
 console_initcall(sirfsoc_uart_console_init);
+
+#define SERIAL_SIRFSOC_CONSOLE (sirfsoc_uart_console)
+#else
+#define SERIAL_SIRFSOC_CONSOLE NULL
 #endif
 
 static struct uart_driver sirfsoc_uart_drv = {
@@ -1157,11 +1165,6 @@ static struct uart_driver sirfsoc_uart_drv = {
 	.dev_name	= SIRFSOC_UART_NAME,
 	.major		= SIRFSOC_UART_MAJOR,
 	.minor		= SIRFSOC_UART_MINOR,
-#ifdef CONFIG_SERIAL_SIRFSOC_CONSOLE
-	.cons			= &sirfsoc_uart_console,
-#else
-	.cons			= NULL,
-#endif
 };
 
 static enum hrtimer_restart
@@ -1479,6 +1482,7 @@ static int __init sirfsoc_uart_init(void)
 {
 	int ret = 0;
 
+	sirfsoc_uart_drv.cons = SERIAL_SIRFSOC_CONSOLE;
 	ret = uart_register_driver(&sirfsoc_uart_drv);
 	if (ret)
 		goto out;

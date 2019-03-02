@@ -96,11 +96,6 @@ static inline void tx_enable(struct uart_port *port, int enabled)
 		port->unused[0] &= ~1;
 }
 
-
-#ifdef SUPPORT_SYSRQ
-static struct console ks8695_console;
-#endif
-
 static void ks8695uart_stop_tx(struct uart_port *port)
 {
 	if (tx_enabled(port)) {
@@ -631,26 +626,30 @@ static int __init ks8695_console_setup(struct console *co, char *options)
 
 static struct uart_driver ks8695_reg;
 
-static struct console ks8695_console = {
-	.name		= SERIAL_KS8695_DEVNAME,
+static const struct console_operations ks8695_cons_ops = {
 	.write		= ks8695_console_write,
 	.device		= uart_console_device,
 	.setup		= ks8695_console_setup,
-	.flags		= CON_PRINTBUFFER,
-	.index		= -1,
-	.data		= &ks8695_reg,
 };
+
+static struct console __initdata *ks8695_console;
 
 static int __init ks8695_console_init(void)
 {
+	ks8695_console = allocate_console_dfl(&ks8695_cons_ops,
+					      SERIAL_KS8695_DEVNAME,
+					      &ks8695_reg);
+	if (!ks8695_console)
+		return -ENOMEM;
+
 	add_preferred_console(SERIAL_KS8695_DEVNAME, 0, NULL);
-	register_console(&ks8695_console);
+	register_console(ks8695_console);
 	return 0;
 }
 
 console_initcall(ks8695_console_init);
 
-#define KS8695_CONSOLE	&ks8695_console
+#define KS8695_CONSOLE	(ks8695_console)
 #else
 #define KS8695_CONSOLE	NULL
 #endif
@@ -662,7 +661,6 @@ static struct uart_driver ks8695_reg = {
 	.major			= SERIAL_KS8695_MAJOR,
 	.minor			= SERIAL_KS8695_MINOR,
 	.nr			= SERIAL_KS8695_NR,
-	.cons			= KS8695_CONSOLE,
 };
 
 static int __init ks8695uart_init(void)
@@ -671,6 +669,7 @@ static int __init ks8695uart_init(void)
 
 	printk(KERN_INFO "Serial: Micrel KS8695 UART driver\n");
 
+	ks8695_reg.cons	= KS8695_CONSOLE;
 	ret = uart_register_driver(&ks8695_reg);
 	if (ret)
 		return ret;

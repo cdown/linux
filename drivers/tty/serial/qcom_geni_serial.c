@@ -1157,6 +1157,10 @@ static void qcom_geni_serial_earlycon_write(struct console *con,
 	__qcom_geni_serial_console_write(&dev->port, s, n);
 }
 
+static const struct console_operations qcom_geni_early_ops = {
+	.write = qcom_geni_serial_earlycon_write,
+};
+
 static int __init qcom_geni_serial_earlycon_setup(struct earlycon_device *dev,
 								const char *opt)
 {
@@ -1201,31 +1205,16 @@ static int __init qcom_geni_serial_earlycon_setup(struct earlycon_device *dev,
 	writel_relaxed(bits_per_char, uport->membase + SE_UART_RX_WORD_LEN);
 	writel_relaxed(stop_bit_len, uport->membase + SE_UART_TX_STOP_BIT_LEN);
 
-	dev->con->write = qcom_geni_serial_earlycon_write;
-	dev->con->setup = NULL;
+	dev->con->ops = &qcom_geni_early_ops;
 	return 0;
 }
 OF_EARLYCON_DECLARE(qcom_geni, "qcom,geni-debug-uart",
 				qcom_geni_serial_earlycon_setup);
 
-static int __init console_register(struct uart_driver *drv)
-{
-	return uart_register_driver(drv);
-}
-
-static void console_unregister(struct uart_driver *drv)
-{
-	uart_unregister_driver(drv);
-}
-
-static struct console cons_ops = {
-	.name = "ttyMSM",
+static const struct console_operations qcom_geni_cons_ops = {
 	.write = qcom_geni_serial_console_write,
 	.device = uart_console_device,
 	.setup = qcom_geni_console_setup,
-	.flags = CON_PRINTBUFFER,
-	.index = -1,
-	.data = &qcom_geni_console_driver,
 };
 
 static struct uart_driver qcom_geni_console_driver = {
@@ -1233,17 +1222,9 @@ static struct uart_driver qcom_geni_console_driver = {
 	.driver_name = "qcom_geni_console",
 	.dev_name = "ttyMSM",
 	.nr =  GENI_UART_CONS_PORTS,
-	.cons = &cons_ops,
 };
 #else
-static int console_register(struct uart_driver *drv)
-{
-	return 0;
-}
-
-static void console_unregister(struct uart_driver *drv)
-{
-}
+static const struct console_operations qcom_geni_cons_ops;
 #endif /* CONFIG_SERIAL_QCOM_GENI_CONSOLE */
 
 static struct uart_driver qcom_geni_uart_driver = {
@@ -1423,21 +1404,26 @@ static int __init qcom_geni_serial_init(void)
 {
 	int ret;
 
-	ret = console_register(&qcom_geni_console_driver);
+	ret = uart_allocate_console_dfl(&qcom_geni_console_driver,
+					&qcom_geni_cons_ops, "ttyMSM",
+					SERIAL_QCOM_GENI_CONSOLE);
 	if (ret)
 		return ret;
 
 	ret = uart_register_driver(&qcom_geni_uart_driver);
-	if (ret) {
-		console_unregister(&qcom_geni_console_driver);
-		return ret;
-	}
+	if (ret)
+		goto out;
 
 	ret = platform_driver_register(&qcom_geni_serial_platform_driver);
-	if (ret) {
-		console_unregister(&qcom_geni_console_driver);
-		uart_unregister_driver(&qcom_geni_uart_driver);
-	}
+	if (ret)
+		goto out_unregister;
+
+	return 0;
+
+out_unregister:
+	uart_unregister_driver(&qcom_geni_uart_driver);
+out:
+	uart_put_console(&qcom_geni_uart_driver);
 	return ret;
 }
 module_init(qcom_geni_serial_init);
@@ -1445,7 +1431,6 @@ module_init(qcom_geni_serial_init);
 static void __exit qcom_geni_serial_exit(void)
 {
 	platform_driver_unregister(&qcom_geni_serial_platform_driver);
-	console_unregister(&qcom_geni_console_driver);
 	uart_unregister_driver(&qcom_geni_uart_driver);
 }
 module_exit(qcom_geni_serial_exit);

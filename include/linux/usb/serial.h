@@ -332,11 +332,11 @@ extern int usb_serial_resume(struct usb_interface *intf);
 
 /* USB Serial console functions */
 #ifdef CONFIG_USB_SERIAL_CONSOLE
-extern void usb_serial_console_init(int minor);
+extern int usb_serial_console_init(int minor);
 extern void usb_serial_console_exit(void);
 extern void usb_serial_console_disconnect(struct usb_serial *serial);
 #else
-static inline void usb_serial_console_init(int minor) { }
+static inline int usb_serial_console_init(int minor) { return 0; }
 static inline void usb_serial_console_exit(void) { }
 static inline void usb_serial_console_disconnect(struct usb_serial *serial) {}
 #endif

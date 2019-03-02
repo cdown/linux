@@ -740,25 +740,29 @@ pnx8xxx_console_setup(struct console *co, char *options)
 }
 
 static struct uart_driver pnx8xxx_reg;
-static struct console pnx8xxx_console = {
-	.name		= "ttyS",
+
+static const struct console_operations pnx8xxx_cons_ops = {
 	.write		= pnx8xxx_console_write,
 	.device		= uart_console_device,
 	.setup		= pnx8xxx_console_setup,
-	.flags		= CON_PRINTBUFFER,
-	.index		= -1,
-	.data		= &pnx8xxx_reg,
 };
+
+static struct console __initdata *pnx8xxx_console;
 
 static int __init pnx8xxx_rs_console_init(void)
 {
+	pnx8xxx_console = allocate_console_dfl(&pnx8xxx_cons_ops, "ttyS",
+					       &pnx8xxx_reg);
+	if (!pnx8xxx_console)
+		return -ENOMEM;
+
 	pnx8xxx_init_ports();
-	register_console(&pnx8xxx_console);
+	register_console(pnx8xxx_console);
 	return 0;
 }
 console_initcall(pnx8xxx_rs_console_init);
 
-#define PNX8XXX_CONSOLE	&pnx8xxx_console
+#define PNX8XXX_CONSOLE	(pnx8xxx_console)
 #else
 #define PNX8XXX_CONSOLE	NULL
 #endif
@@ -770,7 +774,6 @@ static struct uart_driver pnx8xxx_reg = {
 	.major			= SERIAL_PNX8XXX_MAJOR,
 	.minor			= MINOR_START,
 	.nr			= NR_PORTS,
-	.cons			= PNX8XXX_CONSOLE,
 };
 
 static int pnx8xxx_serial_suspend(struct platform_device *pdev, pm_message_t state)
@@ -838,6 +841,7 @@ static int __init pnx8xxx_serial_init(void)
 
 	pnx8xxx_init_ports();
 
+	pnx8xxx_reg.cons = PNX8XXX_CONSOLE;
 	ret = uart_register_driver(&pnx8xxx_reg);
 	if (ret == 0) {
 		ret = platform_driver_register(&pnx8xxx_serial_driver);

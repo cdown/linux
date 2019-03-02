@@ -2043,24 +2043,17 @@ static int __init lpuart_console_setup(struct console *co, char *options)
 }
 
 static struct uart_driver lpuart_reg;
-static struct console lpuart_console = {
-	.name		= DEV_NAME,
+
+static const struct console_operations lpuart_cons_ops = {
 	.write		= lpuart_console_write,
 	.device		= uart_console_device,
 	.setup		= lpuart_console_setup,
-	.flags		= CON_PRINTBUFFER,
-	.index		= -1,
-	.data		= &lpuart_reg,
 };
 
-static struct console lpuart32_console = {
-	.name		= DEV_NAME,
+static const struct console_operations lpuart32_cons_ops = {
 	.write		= lpuart32_console_write,
 	.device		= uart_console_device,
 	.setup		= lpuart_console_setup,
-	.flags		= CON_PRINTBUFFER,
-	.index		= -1,
-	.data		= &lpuart_reg,
 };
 
 static void lpuart_early_write(struct console *con, const char *s, unsigned n)
@@ -2070,6 +2063,10 @@ static void lpuart_early_write(struct console *con, const char *s, unsigned n)
 	uart_console_write(&dev->port, s, n, lpuart_console_putchar);
 }
 
+static struct console_operations lpuart_early_cons_ops = {
+	.write = lpuart_early_write,
+};
+
 static void lpuart32_early_write(struct console *con, const char *s, unsigned n)
 {
 	struct earlycon_device *dev = con->data;
@@ -2077,13 +2074,17 @@ static void lpuart32_early_write(struct console *con, const char *s, unsigned n)
 	uart_console_write(&dev->port, s, n, lpuart32_console_putchar);
 }
 
+static struct console_operations lpuart32_early_cons_ops = {
+	.write = lpuart32_early_write,
+};
+
 static int __init lpuart_early_console_setup(struct earlycon_device *device,
 					  const char *opt)
 {
 	if (!device->port.membase)
 		return -ENODEV;
 
-	device->con->write = lpuart_early_write;
+	device->con->ops = &lpuart_early_cons_ops;
 	return 0;
 }
 
@@ -2094,7 +2095,7 @@ static int __init lpuart32_early_console_setup(struct earlycon_device *device,
 		return -ENODEV;
 
 	device->port.iotype = UPIO_MEM32BE;
-	device->con->write = lpuart32_early_write;
+	device->con->ops = &lpuart32_early_cons_ops;
 	return 0;
 }
 
@@ -2106,8 +2107,7 @@ static int __init lpuart32_imx_early_console_setup(struct earlycon_device *devic
 
 	device->port.iotype = UPIO_MEM32;
 	device->port.membase += IMX_REG_OFF;
-	device->con->write = lpuart32_early_write;
-
+	device->con->ops = &lpuart32_early_cons_ops;
 	return 0;
 }
 OF_EARLYCON_DECLARE(lpuart, "fsl,vf610-lpuart", lpuart_early_console_setup);
@@ -2116,11 +2116,9 @@ OF_EARLYCON_DECLARE(lpuart32, "fsl,imx7ulp-lpuart", lpuart32_imx_early_console_s
 EARLYCON_DECLARE(lpuart, lpuart_early_console_setup);
 EARLYCON_DECLARE(lpuart32, lpuart32_early_console_setup);
 
-#define LPUART_CONSOLE	(&lpuart_console)
-#define LPUART32_CONSOLE	(&lpuart32_console)
 #else
-#define LPUART_CONSOLE	NULL
-#define LPUART32_CONSOLE	NULL
+static const struct console_operations lpuart_cons_ops;
+static const struct console_operations lpuart32_cons_ops;
 #endif
 
 static struct uart_driver lpuart_reg = {
@@ -2128,7 +2126,6 @@ static struct uart_driver lpuart_reg = {
 	.driver_name	= DRIVER_NAME,
 	.dev_name	= DEV_NAME,
 	.nr		= ARRAY_SIZE(lpuart_ports),
-	.cons		= LPUART_CONSOLE,
 };
 
 static int lpuart_probe(struct platform_device *pdev)
@@ -2137,6 +2134,7 @@ static int lpuart_probe(struct platform_device *pdev)
 							   &pdev->dev);
 	const struct lpuart_soc_data *sdata = of_id->data;
 	struct device_node *np = pdev->dev.of_node;
+	const struct console_operations *ops;
 	struct lpuart_port *sport;
 	struct resource *res;
 	int ret;
@@ -2203,22 +2201,25 @@ static int lpuart_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, &sport->port);
 
-	if (lpuart_is_32(sport)) {
-		lpuart_reg.cons = LPUART32_CONSOLE;
+	ops = lpuart_is_32(sport) ? &lpuart32_cons_ops : &lpuart_cons_ops;
+	ret = uart_allocate_console_dfl(&lpuart_reg, ops, DEV_NAME,
+					SERIAL_FSL_LPUART_CONSOLE);
+	if (ret)
+		return ret;
+
+	if (lpuart_is_32(sport))
 		ret = devm_request_irq(&pdev->dev, sport->port.irq, lpuart32_int, 0,
 					DRIVER_NAME, sport);
-	} else {
-		lpuart_reg.cons = LPUART_CONSOLE;
+	else
 		ret = devm_request_irq(&pdev->dev, sport->port.irq, lpuart_int, 0,
 					DRIVER_NAME, sport);
-	}
 
 	if (ret)
-		goto failed_irq_request;
+		goto out;
 
 	ret = uart_add_one_port(&lpuart_reg, &sport->port);
 	if (ret)
-		goto failed_attach_port;
+		goto out;
 
 	uart_get_rs485_mode(&pdev->dev, &sport->port.rs485);
 
@@ -2243,8 +2244,8 @@ static int lpuart_probe(struct platform_device *pdev)
 
 	return 0;
 
-failed_attach_port:
-failed_irq_request:
+out:
+	uart_put_console(&lpuart_reg);
 	clk_disable_unprepare(sport->clk);
 	return ret;
 }

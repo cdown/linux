@@ -798,28 +798,30 @@ static int __init siu_console_setup(struct console *con, char *options)
 
 static struct uart_driver siu_uart_driver;
 
-static struct console siu_console = {
-	.name	= "ttyVR",
+static const struct console_operations sui_cons_ops = {
 	.write	= siu_console_write,
 	.device	= uart_console_device,
 	.setup	= siu_console_setup,
-	.flags	= CON_PRINTBUFFER,
-	.index	= -1,
-	.data	= &siu_uart_driver,
 };
+
+static struct console *siu_console;
 
 static int siu_console_init(void)
 {
 	struct uart_port *port;
 	int i;
 
+	siu_console = allocate_console_dfl(&sui_cons_ops, "ttyVR",
+					   &siu_uart_driver);
+	if (!siu_console)
+		return -ENOMEM;
+
 	for (i = 0; i < SIU_PORTS_MAX; i++) {
 		port = &siu_uart_ports[i];
 		port->ops = &siu_uart_ops;
 	}
 
-	register_console(&siu_console);
-
+	register_console(siu_console);
 	return 0;
 }
 
@@ -837,9 +839,18 @@ void __init vr41xx_siu_early_setup(struct uart_port *port)
 	siu_uart_ports[port->line].ops = &siu_uart_ops;
 }
 
-#define SERIAL_VR41XX_CONSOLE	&siu_console
+/*
+ * Since we need this in ->probe(), the static pointer can't be __init, so the
+ * following ugliness cleans up the "dangling reference" in the built-in case.
+ */
+#define SERIAL_VR41XX_CONSOLE()				\
+({							\
+	struct console *__con = siu_console;		\
+	s3c24xx_serial_console = NULL;			\
+	__con;						\
+})
 #else
-#define SERIAL_VR41XX_CONSOLE	NULL
+#define SERIAL_VR41XX_CONSOLE() (NULL)
 #endif
 
 static struct uart_driver siu_uart_driver = {
@@ -848,7 +859,6 @@ static struct uart_driver siu_uart_driver = {
 	.dev_name	= "ttyVR",
 	.major		= SIU_MAJOR,
 	.minor		= SIU_MINOR_BASE,
-	.cons		= SERIAL_VR41XX_CONSOLE,
 };
 
 static int siu_probe(struct platform_device *dev)
@@ -861,6 +871,7 @@ static int siu_probe(struct platform_device *dev)
 		return -ENODEV;
 
 	siu_uart_driver.nr = num;
+	siu_uart_driver.cons = SERIAL_VR41XX_CONSOLE();
 	retval = uart_register_driver(&siu_uart_driver);
 	if (retval)
 		return retval;

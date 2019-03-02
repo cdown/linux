@@ -277,12 +277,12 @@ static struct tty_driver *ehv_bc_console_device(struct console *co, int *index)
 	return ehv_bc_driver;
 }
 
-static struct console ehv_bc_console = {
-	.name		= "ttyEHV",
+static const struct console_operations ehv_bc_cons_ops = {
 	.write		= ehv_bc_console_write,
 	.device		= ehv_bc_console_device,
-	.flags		= CON_PRINTBUFFER | CON_ENABLED,
 };
+
+static struct console *ehv_bc_console;
 
 /*
  * Console initialization
@@ -308,12 +308,19 @@ static int __init ehv_bc_console_init(void)
 			CONFIG_PPC_EARLY_DEBUG_EHV_BC_HANDLE);
 #endif
 
+	ehv_bc_console = allocate_console_dfl(&ehv_bc_cons_ops, "ttyEHV", NULL);
+	if (!ehv_bc_console)
+		return -ENOMEM;
+
+	ehv_bc_console->flags |= CON_ENABLED;
+
 	/* add_preferred_console() must be called before register_console(),
 	   otherwise it won't work.  However, we don't want to enumerate all the
 	   byte channels here, either, since we only care about one. */
 
-	add_preferred_console(ehv_bc_console.name, ehv_bc_console.index, NULL);
-	register_console(&ehv_bc_console);
+	add_preferred_console(ehv_bc_console->name, ehv_bc_console->index,
+			      NULL);
+	register_console(ehv_bc_console);
 
 	pr_info("ehv-bc: registered console driver for byte channel %u\n",
 		stdout_bc);
@@ -765,7 +772,7 @@ static int __init ehv_bc_init(void)
 	}
 
 	ehv_bc_driver->driver_name = "ehv-bc";
-	ehv_bc_driver->name = ehv_bc_console.name;
+	ehv_bc_driver->name = ehv_bc_console->name;
 	ehv_bc_driver->type = TTY_DRIVER_TYPE_CONSOLE;
 	ehv_bc_driver->subtype = SYSTEM_TYPE_CONSOLE;
 	ehv_bc_driver->init_termios = tty_std_termios;

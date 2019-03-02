@@ -53,11 +53,16 @@ static void q40_mem_console_write(struct console *co, const char *b,
 
 extern int ql_ticks;
 
+static const struct console_operations q40_mem_ops = {
+	.write	= q40_mem_console_write,
+};
+
 static struct console q40_console_driver = {
 	.name	= "debug",
-	.write	= q40_mem_console_write,
 	.flags	= CON_PRINTBUFFER,
+	.ops = &q40_mem_ops,
 	.index	= -1,
+	.is_static = 1,
 };
 
 

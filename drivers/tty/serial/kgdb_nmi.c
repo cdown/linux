@@ -71,14 +71,13 @@ static struct tty_driver *kgdb_nmi_console_device(struct console *co, int *idx)
 	return kgdb_nmi_tty_driver;
 }
 
-static struct console kgdb_nmi_console = {
-	.name	= "ttyNMI",
+static const struct console_operations kgdb_nmi_cons_ops = {
 	.setup  = kgdb_nmi_console_setup,
 	.write	= kgdb_nmi_console_write,
 	.device	= kgdb_nmi_console_device,
-	.flags	= CON_PRINTBUFFER | CON_ANYTIME,
-	.index	= -1,
 };
+
+static struct console *kgdb_nmi_console;
 
 /*
  * This is usually the maximum rate on debug ports. We make fifo large enough
@@ -335,6 +334,15 @@ int kgdb_register_nmi_console(void)
 		pr_err("%s: cannot allocate tty\n", __func__);
 		return -ENOMEM;
 	}
+
+	ret = -ENOMEM;
+	kgdb_nmi_console = allocate_console_dfl(&kgdb_nmi_cons_ops, "ttyNMI",
+						NULL);
+	if (!kgdb_nmi_console)
+		goto err_drv_reg;
+
+	kgdb_nmi_console->flags |= CON_ANYTIME;
+
 	kgdb_nmi_tty_driver->driver_name	= "ttyNMI";
 	kgdb_nmi_tty_driver->name		= "ttyNMI";
 	kgdb_nmi_tty_driver->num		= 1;
@@ -352,7 +360,7 @@ int kgdb_register_nmi_console(void)
 		goto err_drv_reg;
 	}
 
-	register_console(&kgdb_nmi_console);
+	register_console(kgdb_nmi_console);
 
 	return 0;
 err_drv_reg:
@@ -369,7 +377,7 @@ int kgdb_unregister_nmi_console(void)
 		return 0;
 	arch_kgdb_ops.enable_nmi(0);
 
-	ret = unregister_console(&kgdb_nmi_console);
+	ret = unregister_console(kgdb_nmi_console);
 	if (ret)
 		return ret;
 
@@ -377,6 +385,7 @@ int kgdb_unregister_nmi_console(void)
 	if (ret)
 		return ret;
 	put_tty_driver(kgdb_nmi_tty_driver);
+	put_device(&kgdb_nmi_console->dev);
 
 	return 0;
 }

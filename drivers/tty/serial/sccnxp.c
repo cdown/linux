@@ -867,6 +867,15 @@ static int sccnxp_console_setup(struct console *co, char *options)
 
 	return uart_set_options(port, co, baud, parity, bits, flow);
 }
+
+static const struct console_operations sccnxp_cons_ops = {
+	.device	= uart_console_device,
+	.write	= sccnxp_console_write,
+	.setup	= sccnxp_console_setup,
+};
+
+#else
+static const struct console_operations sccnxp_cons_ops;
 #endif
 
 static const struct platform_device_id sccnxp_id_table[] = {
@@ -972,16 +981,12 @@ static int sccnxp_probe(struct platform_device *pdev)
 	s->uart.major		= SCCNXP_MAJOR;
 	s->uart.minor		= SCCNXP_MINOR;
 	s->uart.nr		= s->chip->nr;
-#ifdef CONFIG_SERIAL_SCCNXP_CONSOLE
-	s->uart.cons		= &s->console;
-	s->uart.cons->device	= uart_console_device;
-	s->uart.cons->write	= sccnxp_console_write;
-	s->uart.cons->setup	= sccnxp_console_setup;
-	s->uart.cons->flags	= CON_PRINTBUFFER;
-	s->uart.cons->index	= -1;
-	s->uart.cons->data	= s;
-	strcpy(s->uart.cons->name, "ttySC");
-#endif
+
+	ret = uart_allocate_console_dfl(&s->uart, &sccnxp_cons_ops, "ttySC",
+					SERIAL_SCCNXP_CONSOLE);
+	if (ret)
+		goto err_out;
+
 	ret = uart_register_driver(&s->uart);
 	if (ret) {
 		dev_err(&pdev->dev, "Registering UART driver failed\n");
@@ -1033,6 +1038,7 @@ err_out:
 	if (!IS_ERR(s->regulator))
 		regulator_disable(s->regulator);
 
+	uart_put_console(&s->uart);
 	return ret;
 }
 

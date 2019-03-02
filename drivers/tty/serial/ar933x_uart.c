@@ -595,14 +595,10 @@ static int ar933x_uart_console_setup(struct console *co, char *options)
 	return uart_set_options(&up->port, co, baud, parity, bits, flow);
 }
 
-static struct console ar933x_uart_console = {
-	.name		= "ttyATH",
+static const struct console_operations ar933x_cons_ops = {
 	.write		= ar933x_uart_console_write,
 	.device		= uart_console_device,
 	.setup		= ar933x_uart_console_setup,
-	.flags		= CON_PRINTBUFFER,
-	.index		= -1,
-	.data		= &ar933x_uart_driver,
 };
 
 static void ar933x_uart_add_console_port(struct ar933x_uart_port *up)
@@ -749,8 +745,10 @@ static int __init ar933x_uart_init(void)
 {
 	int ret;
 
-	if (ar933x_uart_console_enabled())
-		ar933x_uart_driver.cons = &ar933x_uart_console;
+	ret = uart_allocate_console_dfl(&ar933x_uart_driver, &ar933x_cons_ops,
+					"ttyATH", SERIAL_AR933X_CONSOLE);
+	if (ret)
+		return ret;
 
 	ret = uart_register_driver(&ar933x_uart_driver);
 	if (ret)
@@ -765,6 +763,7 @@ static int __init ar933x_uart_init(void)
 err_unregister_uart_driver:
 	uart_unregister_driver(&ar933x_uart_driver);
 err_out:
+	uart_put_console(&ar933x_uart_driver);
 	return ret;
 }
 

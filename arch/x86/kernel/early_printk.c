@@ -70,11 +70,16 @@ static void early_vga_write(struct console *con, const char *str, unsigned n)
 	}
 }
 
+static const struct console_operations early_vga_ops = {
+	.write =	early_vga_write,
+};
+
 static struct console early_vga_console = {
 	.name =		"earlyvga",
-	.write =	early_vga_write,
 	.flags =	CON_PRINTBUFFER,
 	.index =	-1,
+	.ops =		&early_vga_ops,
+	.is_static =	1,
 };
 
 /* Serial functions loosely based on a similar package from Klaus P. Gerlicher */
@@ -320,11 +325,16 @@ static __init void early_pci_serial_init(char *s)
 }
 #endif
 
+static const struct console_operations early_serial_ops = {
+	.write =	early_serial_write,
+};
+
 static struct console early_serial_console = {
 	.name =		"earlyser",
-	.write =	early_serial_write,
 	.flags =	CON_PRINTBUFFER,
 	.index =	-1,
+	.ops =		&early_serial_ops,
+	.is_static =	1,
 };
 
 static void early_console_register(struct console *con, int keep_early)

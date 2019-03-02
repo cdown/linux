@@ -612,24 +612,28 @@ netx_console_setup(struct console *co, char *options)
 }
 
 static struct uart_driver netx_reg;
-static struct console netx_console = {
-	.name		= "ttyNX",
+
+static const struct console_operations netx_cons_ops = {
 	.write		= netx_console_write,
 	.device		= uart_console_device,
 	.setup		= netx_console_setup,
-	.flags		= CON_PRINTBUFFER,
-	.index		= -1,
-	.data		= &netx_reg,
 };
+
+
+static struct console __initdata *netx_console;
 
 static int __init netx_console_init(void)
 {
-	register_console(&netx_console);
+	netx_console = allocate_console_dfl(&netx_cons_ops, "ttyNX", &netx_reg);
+	if (!netx_console)
+		return -ENOMEM;
+
+	register_console(netx_console);
 	return 0;
 }
 console_initcall(netx_console_init);
 
-#define NETX_CONSOLE	&netx_console
+#define NETX_CONSOLE	(netx_console)
 #else
 #define NETX_CONSOLE	NULL
 #endif
@@ -641,7 +645,6 @@ static struct uart_driver netx_reg = {
 	.major          = SERIAL_NX_MAJOR,
 	.minor          = MINOR_START,
 	.nr             = ARRAY_SIZE(netx_ports),
-	.cons           = NETX_CONSOLE,
 };
 
 static int serial_netx_suspend(struct platform_device *pdev, pm_message_t state)
@@ -707,6 +710,7 @@ static int __init netx_serial_init(void)
 
 	printk(KERN_INFO "Serial: NetX driver\n");
 
+	netx_reg.cons = NETX_CONSOLE;
 	ret = uart_register_driver(&netx_reg);
 	if (ret)
 		return ret;

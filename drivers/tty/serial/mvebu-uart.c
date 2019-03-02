@@ -624,6 +624,10 @@ static void mvebu_uart_putc_early_write(struct console *con,
 	uart_console_write(&dev->port, s, n, mvebu_uart_putc);
 }
 
+static const struct console_operations mvebu_early_cons_ops = {
+	.write = mvebu_uart_putc_early_write,
+};
+
 static int __init
 mvebu_uart_early_console_setup(struct earlycon_device *device,
 			       const char *opt)
@@ -631,8 +635,7 @@ mvebu_uart_early_console_setup(struct earlycon_device *device,
 	if (!device->port.membase)
 		return -ENODEV;
 
-	device->con->write = mvebu_uart_putc_early_write;
-
+	device->con->ops = &mvebu_early_cons_ops;
 	return 0;
 }
 
@@ -715,25 +718,30 @@ static int mvebu_uart_console_setup(struct console *co, char *options)
 
 static struct uart_driver mvebu_uart_driver;
 
-static struct console mvebu_uart_console = {
-	.name	= "ttyMV",
+static const struct console_operations mvebu_cons_ops = {
 	.write	= mvebu_uart_console_write,
 	.device	= uart_console_device,
 	.setup	= mvebu_uart_console_setup,
-	.flags	= CON_PRINTBUFFER,
-	.index	= -1,
-	.data	= &mvebu_uart_driver,
 };
+
+static struct console __initdata *mvebu_uart_console;
 
 static int __init mvebu_uart_console_init(void)
 {
-	register_console(&mvebu_uart_console);
+	mvebu_uart_console = allocate_console_dfl(&mvebu_cons_ops, "ttyMV",
+						  &mvebu_uart_driver);
+	if (!mvebu_uart_console)
+		return -ENOMEM;
+
+	register_console(mvebu_uart_console);
 	return 0;
 }
 
 console_initcall(mvebu_uart_console_init);
 
-
+#define MVEBU_CONSOLE (mvebu_uart_console)
+#else
+#define MVEBU_CONSOLE NULL
 #endif /* CONFIG_SERIAL_MVEBU_CONSOLE */
 
 static struct uart_driver mvebu_uart_driver = {
@@ -741,9 +749,6 @@ static struct uart_driver mvebu_uart_driver = {
 	.driver_name		= DRIVER_NAME,
 	.dev_name		= "ttyMV",
 	.nr			= MVEBU_NR_UARTS,
-#ifdef CONFIG_SERIAL_MVEBU_CONSOLE
-	.cons			= &mvebu_uart_console,
-#endif
 };
 
 #if defined(CONFIG_PM)
@@ -974,6 +979,7 @@ static int __init mvebu_uart_init(void)
 {
 	int ret;
 
+	mvebu_uart_driver.cons = MVEBU_CONSOLE;
 	ret = uart_register_driver(&mvebu_uart_driver);
 	if (ret)
 		return ret;

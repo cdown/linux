@@ -640,20 +640,23 @@ lqasc_console_setup(struct console *co, char *options)
 	return uart_set_options(port, co, baud, parity, bits, flow);
 }
 
-static struct console lqasc_console = {
-	.name =		"ttyLTQ",
+static const struct console_operations lqasc_cons_ops = {
 	.write =	lqasc_console_write,
 	.device =	uart_console_device,
 	.setup =	lqasc_console_setup,
-	.flags =	CON_PRINTBUFFER,
-	.index =	-1,
-	.data =		&lqasc_reg,
 };
+
+static struct console __initdata *lqasc_console;
 
 static int __init
 lqasc_console_init(void)
 {
-	register_console(&lqasc_console);
+	lqasc_console = allocate_console_dfl(&lqasc_cons_ops, "ttyLTQ",
+					     &lqasc_reg);
+	if (!lqasc_console)
+		return -ENOMEM;
+
+	register_console(lqasc_console);
 	return 0;
 }
 console_initcall(lqasc_console_init);
@@ -667,6 +670,10 @@ static void lqasc_serial_early_console_write(struct console *co,
 	lqasc_serial_port_write(&dev->port, s, count);
 }
 
+static const struct console_operations lqasc_early_cons_ops = {
+	.write = lqasc_serial_early_console_write,
+};
+
 static int __init
 lqasc_serial_early_console_setup(struct earlycon_device *device,
 				 const char *opt)
@@ -674,7 +681,7 @@ lqasc_serial_early_console_setup(struct earlycon_device *device,
 	if (!device->port.membase)
 		return -ENODEV;
 
-	device->con->write = lqasc_serial_early_console_write;
+	device->con->ops = &lqasc_early_cons_ops;
 	return 0;
 }
 OF_EARLYCON_DECLARE(lantiq, DRVNAME, lqasc_serial_early_console_setup);
@@ -686,7 +693,6 @@ static struct uart_driver lqasc_reg = {
 	.major =	0,
 	.minor =	0,
 	.nr =		MAXPORTS,
-	.cons =		&lqasc_console,
 };
 
 static int __init
@@ -791,6 +797,7 @@ init_lqasc(void)
 {
 	int ret;
 
+	lqasc_reg.cons = lqasc_console;
 	ret = uart_register_driver(&lqasc_reg);
 	if (ret != 0)
 		return ret;

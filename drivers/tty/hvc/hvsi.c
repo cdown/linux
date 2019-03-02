@@ -1151,20 +1151,22 @@ static int __init hvsi_console_setup(struct console *console, char *options)
 	return 0;
 }
 
-static struct console hvsi_console = {
-	.name		= "hvsi",
+static const struct console_operations hvsi_cons_ops = {
 	.write		= hvsi_console_print,
 	.device		= hvsi_console_device,
 	.setup		= hvsi_console_setup,
-	.flags		= CON_PRINTBUFFER,
-	.index		= -1,
 };
 
 static int __init hvsi_console_init(void)
 {
+	struct console *hvsi_console;
 	struct device_node *vty;
 
 	hvsi_wait = poll_for_state; /* no irqs yet; must poll */
+
+	hvsi_console = allocate_console_dfl(&hvsi_cons_ops, "hvsi", NULL);
+	if (!hvsi_console)
+		return -ENOMEM;
 
 	/* search device tree for vty nodes */
 	for_each_compatible_node(vty, "serial", "hvterm-protocol") {
@@ -1204,7 +1206,9 @@ static int __init hvsi_console_init(void)
 	}
 
 	if (hvsi_count)
-		register_console(&hvsi_console);
+		register_console(hvsi_console);
+
+	put_console(hvsi_console);
 	return 0;
 }
 console_initcall(hvsi_console_init);

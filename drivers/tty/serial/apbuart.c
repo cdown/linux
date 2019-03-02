@@ -507,30 +507,36 @@ static int __init apbuart_console_setup(struct console *co, char *options)
 
 static struct uart_driver grlib_apbuart_driver;
 
-static struct console grlib_apbuart_console = {
-	.name = "ttyS",
+static const struct console_operations grlib_cons_ops = {
 	.write = apbuart_console_write,
 	.device = uart_console_device,
 	.setup = apbuart_console_setup,
-	.flags = CON_PRINTBUFFER,
-	.index = -1,
-	.data = &grlib_apbuart_driver,
 };
 
+static struct console __initdata *grlib_apbuart_console;
 
 static int grlib_apbuart_configure(void);
 
 static int __init apbuart_console_init(void)
 {
+	grlib_apbuart_console = allocate_console_dfl(&grlib_cons_ops, "ttyS",
+						     &grlib_apbuart_driver);
+	if (!grlib_apbuart_console)
+		return -ENOMEM;
+
 	if (grlib_apbuart_configure())
-		return -ENODEV;
-	register_console(&grlib_apbuart_console);
+		goto err;
+
+	register_console(grlib_apbuart_console);
 	return 0;
+err:
+	put_console(grlib_apbuart_console);
+	return -ENODEV;
 }
 
 console_initcall(apbuart_console_init);
 
-#define APBUART_CONSOLE	(&grlib_apbuart_console)
+#define APBUART_CONSOLE	(grlib_apbuart_console)
 #else
 #define APBUART_CONSOLE	NULL
 #endif
@@ -542,7 +548,6 @@ static struct uart_driver grlib_apbuart_driver = {
 	.major = SERIAL_APBUART_MAJOR,
 	.minor = SERIAL_APBUART_MINOR,
 	.nr = UART_NR,
-	.cons = APBUART_CONSOLE,
 };
 
 
@@ -652,6 +657,7 @@ static int __init grlib_apbuart_init(void)
 
 	printk(KERN_INFO "Serial: GRLIB APBUART driver\n");
 
+	grlib_apbuart_driver.cons = APBUART_CONSOLE;
 	ret = uart_register_driver(&grlib_apbuart_driver);
 
 	if (ret) {

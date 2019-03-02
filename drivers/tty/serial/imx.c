@@ -2071,17 +2071,12 @@ error_console:
 }
 
 static struct uart_driver imx_uart_uart_driver;
-static struct console imx_uart_console = {
-	.name		= DEV_NAME,
+
+static const struct console_operations imx_cons_ops = {
 	.write		= imx_uart_console_write,
 	.device		= uart_console_device,
 	.setup		= imx_uart_console_setup,
-	.flags		= CON_PRINTBUFFER,
-	.index		= -1,
-	.data		= &imx_uart_uart_driver,
 };
-
-#define IMX_CONSOLE	&imx_uart_console
 
 #ifdef CONFIG_OF
 static void imx_uart_console_early_putchar(struct uart_port *port, int ch)
@@ -2102,14 +2097,17 @@ static void imx_uart_console_early_write(struct console *con, const char *s,
 	uart_console_write(&dev->port, s, count, imx_uart_console_early_putchar);
 }
 
+static const struct console_operations imx_early_cons_ops = {
+	.write = imx_uart_console_early_write,
+};
+
 static int __init
 imx_console_early_setup(struct earlycon_device *dev, const char *opt)
 {
 	if (!dev->port.membase)
 		return -ENODEV;
 
-	dev->con->write = imx_uart_console_early_write;
-
+	dev->con->ops = &imx_early_cons_ops;
 	return 0;
 }
 OF_EARLYCON_DECLARE(ec_imx6q, "fsl,imx6q-uart", imx_console_early_setup);
@@ -2117,7 +2115,7 @@ OF_EARLYCON_DECLARE(ec_imx21, "fsl,imx21-uart", imx_console_early_setup);
 #endif
 
 #else
-#define IMX_CONSOLE	NULL
+static const struct console_operations imx_cons_ops;
 #endif
 
 static struct uart_driver imx_uart_uart_driver = {
@@ -2127,7 +2125,6 @@ static struct uart_driver imx_uart_uart_driver = {
 	.major          = SERIAL_IMX_MAJOR,
 	.minor          = MINOR_START,
 	.nr             = ARRAY_SIZE(imx_uart_ports),
-	.cons           = IMX_CONSOLE,
 };
 
 #ifdef CONFIG_OF
@@ -2553,15 +2550,27 @@ static struct platform_driver imx_uart_platform_driver = {
 
 static int __init imx_uart_init(void)
 {
-	int ret = uart_register_driver(&imx_uart_uart_driver);
+	int ret;
 
+	ret = uart_allocate_console_dfl(&imx_uart_uart_driver, &imx_cons_ops,
+					DEV_NAME, SERIAL_IMX_CONSOLE);
 	if (ret)
 		return ret;
 
+	ret = uart_register_driver(&imx_uart_uart_driver);
+	if (ret)
+		goto out;
+
 	ret = platform_driver_register(&imx_uart_platform_driver);
 	if (ret != 0)
-		uart_unregister_driver(&imx_uart_uart_driver);
+		goto out_unregister;
 
+	return 0;
+
+out_unregister:
+	uart_unregister_driver(&imx_uart_uart_driver);
+out:
+	uart_put_console(&imx_uart_uart_driver);
 	return ret;
 }
 

@@ -887,19 +887,23 @@ static int __init dz_console_setup(struct console *co, char *options)
 }
 
 static struct uart_driver dz_reg;
-static struct console dz_console = {
-	.name	= "ttyS",
+
+static const struct console_operations dz_cons_ops = {
 	.write	= dz_console_print,
 	.device	= uart_console_device,
 	.setup	= dz_console_setup,
-	.flags	= CON_PRINTBUFFER,
-	.index	= -1,
-	.data	= &dz_reg,
 };
+
+static struct console __initdata *dz_console;
 
 static int __init dz_serial_console_init(void)
 {
 	if (!IOASIC) {
+		dz_console = allocate_console_dfl(&dz_cons_ops, "ttyS",
+						  &dz_reg);
+		if (!dz_console)
+			return -ENOMEM;
+
 		dz_init_ports();
 		register_console(&dz_console);
 		return 0;
@@ -909,7 +913,7 @@ static int __init dz_serial_console_init(void)
 
 console_initcall(dz_serial_console_init);
 
-#define SERIAL_DZ_CONSOLE	&dz_console
+#define SERIAL_DZ_CONSOLE	(dz_console)
 #else
 #define SERIAL_DZ_CONSOLE	NULL
 #endif /* CONFIG_SERIAL_DZ_CONSOLE */
@@ -921,7 +925,6 @@ static struct uart_driver dz_reg = {
 	.major			= TTY_MAJOR,
 	.minor			= 64,
 	.nr			= DZ_NB_PORT,
-	.cons			= SERIAL_DZ_CONSOLE,
 };
 
 static int __init dz_init(void)
@@ -935,6 +938,7 @@ static int __init dz_init(void)
 
 	dz_init_ports();
 
+	dz_reg.cons = SERIAL_DZ_CONSOLE;
 	ret = uart_register_driver(&dz_reg);
 	if (ret)
 		return ret;

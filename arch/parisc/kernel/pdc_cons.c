@@ -218,13 +218,18 @@ static struct tty_driver * pdc_console_device (struct console *c, int *index)
 #define pdc_console_device NULL
 #endif
 
-static struct console pdc_cons = {
-	.name =		"ttyB",
+static const struct console_operations pdc_ops = {
 	.write =	pdc_console_write,
 	.device =	pdc_console_device,
 	.setup =	pdc_console_setup,
+};
+
+static struct console pdc_cons = {
+	.name =		"ttyB",
 	.flags =	CON_BOOT | CON_PRINTBUFFER,
+	.ops =		&pdc_ops,
 	.index =	-1,
+	.is_static =	1,
 };
 
 static int pdc_console_initialized;

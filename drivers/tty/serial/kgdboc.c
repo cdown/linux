@@ -170,7 +170,7 @@ static int configure_kgdboc(void)
 	cons = console_drivers;
 	while (cons) {
 		int idx;
-		if (cons->device && cons->device(cons, &idx) == p &&
+		if (cons->ops->device && cons->ops->device(cons, &idx) == p &&
 		    idx == tty_line) {
 			kgdboc_io_ops.is_console = 1;
 			break;

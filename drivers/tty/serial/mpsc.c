@@ -1790,28 +1790,33 @@ static int __init mpsc_console_setup(struct console *co, char *options)
 	return uart_set_options(&pi->port, co, baud, parity, bits, flow);
 }
 
-static struct console mpsc_console = {
-	.name	= MPSC_DEV_NAME,
+static const struct console_operations mpsc_cons_ops = {
 	.write	= mpsc_console_write,
 	.device	= uart_console_device,
 	.setup	= mpsc_console_setup,
-	.flags	= CON_PRINTBUFFER,
-	.index	= -1,
-	.data	= &mpsc_reg,
 };
+
+static struct console __initdata *mpsc_console;
 
 static int __init mpsc_late_console_init(void)
 {
 	pr_debug("mpsc_late_console_init: Enter\n");
 
-	if (!(mpsc_console.flags & CON_ENABLED))
-		register_console(&mpsc_console);
+	if (mpsc_console)
+		return 0;
+
+	mpsc_console = allocate_console_dfl(&mpsc_cons_ops, MPSC_DEV_NAME,
+					    &mpsc_reg);
+	if (!mpsc_console)
+		return -ENOMEM;
+
+	register_console(mpsc_console);
 	return 0;
 }
 
 late_initcall(mpsc_late_console_init);
 
-#define MPSC_CONSOLE	&mpsc_console
+#define MPSC_CONSOLE	(mpsc_console)
 #else
 #define MPSC_CONSOLE	NULL
 #endif
@@ -1943,7 +1948,6 @@ static struct uart_driver mpsc_reg = {
 	.major		= MPSC_MAJOR,
 	.minor		= MPSC_MINOR_START,
 	.nr		= MPSC_NUM_CTLRS,
-	.cons		= MPSC_CONSOLE,
 };
 
 static int mpsc_drv_map_regs(struct mpsc_port_info *pi,
@@ -2110,6 +2114,7 @@ static int __init mpsc_drv_init(void)
 	memset(mpsc_ports, 0, sizeof(mpsc_ports));
 	memset(&mpsc_shared_regs, 0, sizeof(mpsc_shared_regs));
 
+	mpsc_reg.cons = MPSC_CONSOLE;
 	rc = uart_register_driver(&mpsc_reg);
 	if (rc)
 		return rc;

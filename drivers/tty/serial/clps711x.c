@@ -429,14 +429,14 @@ static int uart_clps711x_console_setup(struct console *co, char *options)
 				  SYSCON_UARTEN, SYSCON_UARTEN);
 }
 
-static struct console clps711x_console = {
-	.name	= UART_CLPS711X_DEVNAME,
+static const struct console_operations clps711x_cons_ops = {
 	.device	= uart_console_device,
 	.write	= uart_clps711x_console_write,
 	.setup	= uart_clps711x_console_setup,
-	.flags	= CON_PRINTBUFFER,
-	.index	= -1,
 };
+
+#else
+static const struct console_operations clps711x_cons_ops;
 #endif
 
 static int uart_clps711x_probe(struct platform_device *pdev)
@@ -553,10 +553,11 @@ static int __init uart_clps711x_init(void)
 {
 	int ret;
 
-#ifdef CONFIG_SERIAL_CLPS711X_CONSOLE
-	clps711x_uart.cons = &clps711x_console;
-	clps711x_console.data = &clps711x_uart;
-#endif
+	ret = uart_allocate_console_dfl(&clps711x_uart, &clps711x_cons_ops,
+					UART_CLPS711X_DEVNAME,
+					SERIAL_CLPS711X_CONSOLE);
+	if (ret)
+		return ret;
 
 	ret = uart_register_driver(&clps711x_uart);
 	if (ret)

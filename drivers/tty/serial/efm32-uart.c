@@ -639,18 +639,14 @@ static int efm32_uart_console_setup(struct console *co, char *options)
 
 static struct uart_driver efm32_uart_reg;
 
-static struct console efm32_uart_console = {
-	.name = DEV_NAME,
+static const struct console_operations efm32_cons_ops = {
 	.write = efm32_uart_console_write,
 	.device = uart_console_device,
 	.setup = efm32_uart_console_setup,
-	.flags = CON_PRINTBUFFER,
-	.index = -1,
-	.data = &efm32_uart_reg,
 };
 
 #else
-#define efm32_uart_console (*(struct console *)NULL)
+static const struct console_operations efm32_cons_ops;
 #endif /* ifdef CONFIG_SERIAL_EFM32_UART_CONSOLE / else */
 
 static struct uart_driver efm32_uart_reg = {
@@ -828,16 +824,26 @@ static int __init efm32_uart_init(void)
 {
 	int ret;
 
-	ret = uart_register_driver(&efm32_uart_reg);
+	ret = uart_allocate_console_dfl(&efm32_uart_reg, &efm32_cons_ops,
+					DEV_NAME, SERIAL_EFM32_UART_CONSOLE);
 	if (ret)
 		return ret;
 
+	ret = uart_register_driver(&efm32_uart_reg);
+	if (ret)
+		goto out;
+
 	ret = platform_driver_register(&efm32_uart_driver);
 	if (ret)
-		uart_unregister_driver(&efm32_uart_reg);
+		goto out_unregister;
 
 	pr_info("EFM32 UART/USART driver\n");
+	return 0;
 
+out_unregister:
+	uart_unregister_driver(&efm32_uart_reg);
+out:
+	uart_put_console(&efm32_uart_reg);
 	return ret;
 }
 module_init(efm32_uart_init);

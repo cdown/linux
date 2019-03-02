@@ -214,13 +214,17 @@ static int hvc_console_setup(struct console *co, char *options)
 	return 0;
 }
 
-static struct console hvc_console = {
-	.name		= "hvc",
+static const struct console_operations hvc_console_ops = {
 	.write		= hvc_console_print,
 	.device		= hvc_console_device,
 	.setup		= hvc_console_setup,
+};
+
+static struct console hvc_console = {
 	.flags		= CON_PRINTBUFFER,
 	.index		= -1,
+	.ops		= &hvc_console_ops,
+	.is_static	= 1,
 };
 
 /*

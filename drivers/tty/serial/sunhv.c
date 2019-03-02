@@ -512,17 +512,20 @@ static void sunhv_console_write_bychar(struct console *con, const char *s, unsig
 		spin_unlock_irqrestore(&port->lock, flags);
 }
 
-static struct console sunhv_console = {
-	.name	=	"ttyHV",
+static const struct console_operations sunhv_cons_bychar_ops = {
 	.write	=	sunhv_console_write_bychar,
 	.device	=	uart_console_device,
-	.flags	=	CON_PRINTBUFFER,
-	.index	=	-1,
-	.data	=	&sunhv_reg,
+};
+
+static const struct console_operations sunhv_cons_paged_ops = {
+	.write	=	sunhv_console_write_paged,
+	.device	=	uart_console_device,
 };
 
 static int hv_probe(struct platform_device *op)
 {
+	const struct console_operations *cons_ops = &sunhv_cons_bychar_ops;
+	struct console *sunhv_console;
 	struct uart_port *port;
 	unsigned long minor;
 	int err;
@@ -546,7 +549,7 @@ static int hv_probe(struct platform_device *op)
 		if (!con_read_page)
 			goto out_free_con_write_page;
 
-		sunhv_console.write = sunhv_console_write_paged;
+		cons_ops = &sunhv_cons_paged_ops;
 		sunhv_ops = &bywrite_ops;
 	}
 
@@ -567,23 +570,31 @@ static int hv_probe(struct platform_device *op)
 	if (err)
 		goto out_free_con_read_page;
 
-	sunserial_console_match(&sunhv_console, op->dev.of_node,
+	err = -ENOMEM;
+	sunhv_console = allocate_console_dfl(cons_ops, "ttyHV", &sunhv_reg);
+	if (!sunhv_console)
+		goto out_unregister_driver;
+
+	sunserial_console_match(sunhv_console, op->dev.of_node,
 				&sunhv_reg, port->line, false);
 
 	err = uart_add_one_port(&sunhv_reg, port);
 	if (err)
-		goto out_unregister_driver;
+		goto out_put_console;
 
 	err = request_irq(port->irq, sunhv_interrupt, 0, "hvcons", port);
 	if (err)
 		goto out_remove_port;
 
 	platform_set_drvdata(op, port);
-
+	put_console(sunhv_console);
 	return 0;
 
 out_remove_port:
 	uart_remove_one_port(&sunhv_reg, port);
+
+out_put_console:
+	put_console(sunhv_console);
 
 out_unregister_driver:
 	sunserial_unregister_minors(&sunhv_reg, 1);

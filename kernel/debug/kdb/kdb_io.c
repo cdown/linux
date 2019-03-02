@@ -709,7 +709,7 @@ kdb_printit:
 			}
 		}
 		while (c) {
-			c->write(c, cp, retlen - (cp - kdb_buffer));
+			c->ops->write(c, cp, retlen - (cp - kdb_buffer));
 			touch_nmi_watchdog();
 			c = c->next;
 		}
@@ -773,7 +773,7 @@ kdb_printit:
 			}
 		}
 		while (c) {
-			c->write(c, moreprompt, strlen(moreprompt));
+			c->ops->write(c, moreprompt, strlen(moreprompt));
 			touch_nmi_watchdog();
 			c = c->next;
 		}

@@ -13,11 +13,16 @@ static void sclp_early_write(struct console *con, const char *s, unsigned int le
 	__sclp_early_printk(s, len, 0);
 }
 
+static const struct console_operations sclp_ops = {
+	.write = sclp_early_write,
+};
+
 static struct console sclp_early_console = {
 	.name  = "earlysclp",
-	.write = sclp_early_write,
 	.flags = CON_PRINTBUFFER | CON_BOOT,
+	.ops = &sclp_ops,
 	.index = -1,
+	.is_static = 1,
 };
 
 static int __init setup_early_printk(char *buf)

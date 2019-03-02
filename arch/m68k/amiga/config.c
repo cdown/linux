@@ -110,6 +110,7 @@ static struct console amiga_console_driver = {
 	.name	= "debug",
 	.flags	= CON_PRINTBUFFER,
 	.index	= -1,
+	.is_static = 1,
 };
 
 
@@ -617,6 +618,10 @@ static void amiga_mem_console_write(struct console *co, const char *s,
 	}
 }
 
+static const struct console_operations amiga_mem_ops = {
+	.write = amiga_mem_console_write,
+};
+
 static int __init amiga_savekmsg_setup(char *arg)
 {
 	bool registered;
@@ -637,8 +642,8 @@ static int __init amiga_savekmsg_setup(char *arg)
 	savekmsg->magicptr = ZTWO_PADDR(savekmsg);
 	savekmsg->size = 0;
 
-	registered = !!amiga_console_driver.write;
-	amiga_console_driver.write = amiga_mem_console_write;
+	registered = !!amiga_console_driver.ops;
+	amiga_console_driver.ops = &amiga_mem_ops;
 	if (!registered)
 		register_console(&amiga_console_driver);
 	return 0;
@@ -662,6 +667,10 @@ static void amiga_serial_console_write(struct console *co, const char *s,
 		amiga_serial_putc(*s++);
 	}
 }
+
+static const struct console_operations amiga_serial_ops = {
+	.write = amiga_serial_console_write,
+};
 
 #if 0
 void amiga_serial_puts(const char *s)
@@ -728,8 +737,8 @@ static int __init amiga_debug_setup(char *arg)
 		return 0;
 
 	/* no initialization required (?) */
-	registered = !!amiga_console_driver.write;
-	amiga_console_driver.write = amiga_serial_console_write;
+	registered = !!amiga_console_driver.ops;
+	amiga_console_driver.ops = &amiga_serial_ops;
 	if (!registered)
 		register_console(&amiga_console_driver);
 	return 0;

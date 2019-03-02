@@ -905,11 +905,16 @@ static void early_xdbc_write(struct console *con, const char *str, u32 n)
 	}
 }
 
+static const struct console_operations early_xdbc_ops = {
+	.write		= early_xdbc_write,
+};
+
 static struct console early_xdbc_console = {
 	.name		= "earlyxdbc",
-	.write		= early_xdbc_write,
 	.flags		= CON_PRINTBUFFER,
+	.ops		= &early_xdbc_ops,
 	.index		= -1,
+	.is_static	= 1,
 };
 
 void __init early_xdbc_register_console(void)

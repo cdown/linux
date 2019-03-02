@@ -1471,15 +1471,14 @@ auart_console_setup(struct console *co, char *options)
 	return ret;
 }
 
-static struct console auart_console = {
-	.name		= "ttyAPP",
+static const struct console_operations auart_cons_ops = {
 	.write		= auart_console_write,
 	.device		= uart_console_device,
 	.setup		= auart_console_setup,
-	.flags		= CON_PRINTBUFFER,
-	.index		= -1,
-	.data		= &auart_driver,
 };
+
+#else
+static const struct console_operations auart_cons_ops;
 #endif
 
 static struct uart_driver auart_driver = {
@@ -1489,9 +1488,6 @@ static struct uart_driver auart_driver = {
 	.major		= 0,
 	.minor		= 0,
 	.nr		= MXS_AUART_PORTS,
-#ifdef CONFIG_SERIAL_MXS_AUART_CONSOLE
-	.cons =		&auart_console,
-#endif
 };
 
 static void mxs_init_regs(struct mxs_auart_port *s)
@@ -1783,6 +1779,11 @@ static int __init mxs_auart_init(void)
 {
 	int r;
 
+	r = uart_allocate_console_dfl(&auart_driver, &auart_cons_ops, "ttyAPP",
+				      SERIAL_MXS_AUART_CONSOLE);
+	if (r)
+		return r;
+
 	r = uart_register_driver(&auart_driver);
 	if (r)
 		goto out;
@@ -1795,6 +1796,7 @@ static int __init mxs_auart_init(void)
 out_err:
 	uart_unregister_driver(&auart_driver);
 out:
+	uart_put_console(&auart_driver);
 	return r;
 }
 

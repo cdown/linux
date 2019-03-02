@@ -887,11 +887,9 @@ static struct notifier_block on_reboot_nb = {
 /*
  *  The console structure for the 3215 console
  */
-static struct console con3215 = {
-	.name	 = "ttyS",
+static const struct console_operations con3215_cons_ops = {
 	.write	 = con3215_write,
 	.device	 = con3215_device,
-	.flags	 = CON_PRINTBUFFER,
 };
 
 /*
@@ -902,6 +900,7 @@ static int __init con3215_init(void)
 	struct ccw_device *cdev;
 	struct raw3215_info *raw;
 	struct raw3215_req *req;
+	struct console *con3215;
 	int i;
 
 	/* Check if 3215 is to be the console */
@@ -924,6 +923,10 @@ static int __init con3215_init(void)
 		req->next = raw3215_freelist;
 		raw3215_freelist = req;
 	}
+
+	con3215 = allocate_console_dfl(&con3215_cons_ops, "ttyS", NULL);
+	if (!con3215)
+		return -ENOMEM;
 
 	cdev = ccw_device_create_console(&raw3215_ccw_driver);
 	if (IS_ERR(cdev))
@@ -950,7 +953,7 @@ static int __init con3215_init(void)
 	}
 	atomic_notifier_chain_register(&panic_notifier_list, &on_panic_nb);
 	register_reboot_notifier(&on_reboot_nb);
-	register_console(&con3215);
+	register_console(con3215);
 	return 0;
 }
 console_initcall(con3215_init);

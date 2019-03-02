@@ -3433,9 +3433,9 @@ static ssize_t show_cons_active(struct device *dev,
 
 	console_lock();
 	for_each_console(c) {
-		if (!c->device)
+		if (!c->ops->device)
 			continue;
-		if (!c->write)
+		if (!c->ops->write)
 			continue;
 		if ((c->flags & CON_ENABLED) == 0)
 			continue;
@@ -3445,7 +3445,7 @@ static ssize_t show_cons_active(struct device *dev,
 	}
 	while (i--) {
 		int index = cs[i]->index;
-		struct tty_driver *drv = cs[i]->device(cs[i], &index);
+		struct tty_driver *drv = cs[i]->ops->device(cs[i], &index);
 
 		/* don't resolve tty0 as some programs depend on it */
 		if (drv && (cs[i]->index > 0 || drv->major != TTY_MAJOR))
