@@ -23,7 +23,7 @@
 struct tegra_tcu {
 	struct uart_driver driver;
 #if IS_ENABLED(CONFIG_SERIAL_TEGRA_TCU_CONSOLE)
-	struct console console;
+	struct console *console;
 #endif
 	struct uart_port port;
 
@@ -174,6 +174,12 @@ static void tegra_tcu_receive(struct mbox_client *cl, void *msg)
 	tty_flip_buffer_push(port);
 }
 
+static const struct console_operations tegra_tcu_console_ops = {
+	.write = tegra_tcu_console_write,
+	.setup = tegra_tcu_console_setup,
+	.device = uart_console_device,
+};
+
 static int tegra_tcu_probe(struct platform_device *pdev)
 {
 	struct uart_port *port;
@@ -197,13 +203,10 @@ static int tegra_tcu_probe(struct platform_device *pdev)
 
 #if IS_ENABLED(CONFIG_SERIAL_TEGRA_TCU_CONSOLE)
 	/* setup the console */
-	strcpy(tcu->console.name, "ttyTCU");
-	tcu->console.device = uart_console_device;
-	tcu->console.flags = CON_PRINTBUFFER | CON_ANYTIME;
-	tcu->console.index = -1;
-	tcu->console.write = tegra_tcu_console_write;
-	tcu->console.setup = tegra_tcu_console_setup;
-	tcu->console.data = &tcu->driver;
+	tcu->console = allocate_console_dfl(&tegra_tcu_console_ops,
+					    "ttyTCU",
+					    &tcu->driver);
+	tcu->console->flags |= CON_ANYTIME;
 #endif
 
 	/* setup the driver */
@@ -211,7 +214,7 @@ static int tegra_tcu_probe(struct platform_device *pdev)
 	tcu->driver.driver_name = "tegra-tcu";
 	tcu->driver.dev_name = "ttyTCU";
 #if IS_ENABLED(CONFIG_SERIAL_TEGRA_TCU_CONSOLE)
-	tcu->driver.cons = &tcu->console;
+	tcu->driver.cons = tcu->console;
 #endif
 	tcu->driver.nr = 1;
 
@@ -252,7 +255,7 @@ static int tegra_tcu_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, tcu);
 #if IS_ENABLED(CONFIG_SERIAL_TEGRA_TCU_CONSOLE)
-	register_console(&tcu->console);
+	register_console(tcu->console);
 #endif
 
 	return 0;
@@ -272,7 +275,7 @@ static int tegra_tcu_remove(struct platform_device *pdev)
 	struct tegra_tcu *tcu = platform_get_drvdata(pdev);
 
 #if IS_ENABLED(CONFIG_SERIAL_TEGRA_TCU_CONSOLE)
-	unregister_console(&tcu->console);
+	unregister_console(tcu->console);
 #endif
 	mbox_free_channel(tcu->rx);
 	uart_remove_one_port(&tcu->driver, &tcu->port);

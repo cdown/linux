@@ -16,6 +16,7 @@
 
 #include <linux/atomic.h>
 #include <linux/types.h>
+#include <linux/device.h>
 
 struct vc_data;
 struct console_font_op;
@@ -138,8 +139,9 @@ static inline int con_debug_leave(void)
 #define CON_EXTENDED	(64) /* Use the extended output format a la /dev/kmsg */
 #define CON_LEVEL	(128) /* Level explicitly set on command line */
 
-struct console {
-	char	name[16];
+struct console;
+
+struct console_operations {
 	void	(*write)(struct console *, const char *, unsigned);
 	int	(*read)(struct console *, char *, unsigned);
 	struct tty_driver *(*device)(struct console *, int *);
@@ -147,12 +149,19 @@ struct console {
 	int	(*setup)(struct console *, char *);
 	int	(*exit)(struct console *);
 	int	(*match)(struct console *, char *name, int idx, char *options);
+};
+
+struct console {
+	char	name[16];
 	short	flags;
 	short	index;
 	int	cflag;
 	void	*data;
 	struct	 console *next;
 	int	level;
+	const struct console_operations *ops;
+	struct device dev;
+	int is_static;
 };
 
 /*
@@ -168,6 +177,29 @@ enum con_flush_mode {
 	CONSOLE_FLUSH_PENDING,
 	CONSOLE_REPLAY_ALL,
 };
+
+extern struct console *allocate_console(const struct console_operations *ops,
+					const char *name, short flags,
+					short index, void *data);
+
+#define allocate_console_dfl(ops, name, data) \
+	allocate_console(ops, name, CON_PRINTBUFFER, -1, data)
+
+/*
+ * Helpers for get/put that do the right thing for static early consoles.
+ */
+
+#define get_console(con) \
+do { \
+	if (!con->is_static) \
+		get_device(&(con)->dev); \
+} while (0)
+
+#define put_console(con) \
+do { \
+	if (con && !con->is_static) \
+		put_device(&((struct console *)con)->dev); \
+} while (0)
 
 extern int add_preferred_console(char *name, int idx, char *options);
 extern void register_console(struct console *);
