@@ -195,7 +195,7 @@ static int configure_kgdboc(void)
 
 	for_each_console(cons) {
 		int idx;
-		if (cons->device && cons->device(cons, &idx) == p &&
+		if (cons->ops->device && cons->ops->device(cons, &idx) == p &&
 		    idx == tty_line) {
 			kgdboc_io_ops.cons = cons;
 			break;

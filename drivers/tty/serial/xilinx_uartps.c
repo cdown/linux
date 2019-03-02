@@ -1281,15 +1281,13 @@ static int cdns_uart_console_setup(struct console *co, char *options)
 	return uart_set_options(port, co, baud, parity, bits, flow);
 }
 
-static struct console cdns_uart_console = {
-	.name	= CDNS_UART_TTY_NAME,
+static const struct console_operations cdns_uart_console_ops = {
 	.write	= cdns_uart_console_write,
 	.device	= uart_console_device,
 	.setup	= cdns_uart_console_setup,
-	.flags	= CON_PRINTBUFFER,
-	.index	= -1, /* Specified on the cmdline (e.g. console=ttyPS ) */
-	.data	= &cdns_uart_uart_driver,
 };
+#else
+static const struct console_operations cdns_uart_console_ops;
 #endif /* CONFIG_SERIAL_XILINX_PS_UART_CONSOLE */
 
 #ifdef CONFIG_PM_SLEEP
@@ -1463,14 +1461,17 @@ static int cdns_uart_probe(struct platform_device *pdev)
 		cdns_uart_uart_driver.major = CDNS_UART_MAJOR;
 		cdns_uart_uart_driver.minor = CDNS_UART_MINOR;
 		cdns_uart_uart_driver.nr = CDNS_UART_NR_PORTS;
-#ifdef CONFIG_SERIAL_XILINX_PS_UART_CONSOLE
-		cdns_uart_uart_driver.cons = &cdns_uart_console;
-#endif
+		rc = uart_allocate_console_dfl(&cdns_uart_uart_driver,
+					       &cdns_uart_console_ops,
+					       CDNS_UART_TTY_NAME,
+					       CONFIG_SERIAL_XILINX_PS_UART_CONSOLE);
+		if (rc < 0)
+			return rc;
 
 		rc = uart_register_driver(&cdns_uart_uart_driver);
 		if (rc < 0) {
 			dev_err(&pdev->dev, "Failed to register driver\n");
-			return rc;
+			goto err_out_unregister_console;
 		}
 	}
 
@@ -1625,6 +1626,8 @@ err_out_unregister_driver:
 	if (!instances)
 		uart_unregister_driver(cdns_uart_data->cdns_uart_driver);
 	return rc;
+err_out_unregister_console:
+	uart_put_console(&cdns_uart_uart_driver);
 }
 
 /**
