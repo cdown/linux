@@ -28,10 +28,14 @@ static void __init prom_console_write(struct console *con, const char *s,
 	}
 }
 
+static struct console_operations early_ops __initdata = {
+	.write	= prom_console_write,
+};
+
 static struct console promcons __initdata = {
 	.name	= "prom",
-	.write	= prom_console_write,
 	.flags	= CON_BOOT | CON_PRINTBUFFER,
+	.ops = &early_ops,
 	.index	= -1,
 };
 

@@ -932,20 +932,14 @@ static int asc_console_setup(struct console *co, char *options)
 	return uart_set_options(&ascport->port, co, baud, parity, bits, flow);
 }
 
-static struct console asc_console = {
-	.name		= ASC_SERIAL_NAME,
-	.device		= uart_console_device,
+static struct console_operations asc_cons_ops = {
+	.tty_dev		= uart_console_device,
 	.write		= asc_console_write,
 	.setup		= asc_console_setup,
-	.flags		= CON_PRINTBUFFER,
-	.index		= -1,
-	.data		= &asc_uart_driver,
 };
 
-#define ASC_SERIAL_CONSOLE (&asc_console)
-
 #else
-#define ASC_SERIAL_CONSOLE NULL
+static struct console_operations asc_cons_ops;
 #endif /* CONFIG_SERIAL_ST_ASC_CONSOLE */
 
 static struct uart_driver asc_uart_driver = {
@@ -955,7 +949,6 @@ static struct uart_driver asc_uart_driver = {
 	.major		= 0,
 	.minor		= 0,
 	.nr		= ASC_MAX_PORTS,
-	.cons		= ASC_SERIAL_CONSOLE,
 };
 
 static const struct dev_pm_ops asc_serial_pm_ops = {
@@ -980,14 +973,27 @@ static int __init asc_init(void)
 
 	printk(banner);
 
-	ret = uart_register_driver(&asc_uart_driver);
+#ifdef CONFIG_SERIAL_ST_ASC_CONSOLE
+	ret = uart_init_console_dfl(&asc_uart_driver, &asc_cons_ops,
+					ASC_SERIAL_NAME);
 	if (ret)
 		return ret;
+#endif
+
+	ret = uart_register_driver(&asc_uart_driver);
+	if (ret)
+		goto out;
 
 	ret = platform_driver_register(&asc_serial_driver);
 	if (ret)
-		uart_unregister_driver(&asc_uart_driver);
+		goto out_unregister;
 
+	return 0;
+
+out_unregister:
+	uart_unregister_driver(&asc_uart_driver);
+out:
+	uart_put_console(&asc_uart_driver);
 	return ret;
 }
 

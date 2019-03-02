@@ -957,9 +957,13 @@ static void early_dbgp_write(struct console *con, const char *str, u32 n)
 	}
 }
 
+static struct console_operations early_dbgp_cons_ops = {
+	.write =	early_dbgp_write,
+};
+
 struct console early_dbgp_console = {
 	.name =		"earlydbg",
-	.write =	early_dbgp_write,
+	.ops =		&early_dbgp_cons_ops,
 	.flags =	CON_PRINTBUFFER,
 	.index =	-1,
 };

@@ -1051,15 +1051,14 @@ static int __init ip22zilog_console_setup(struct console *con, char *options)
 
 static struct uart_driver ip22zilog_reg;
 
-static struct console ip22zilog_console = {
-	.name	=	"ttyS",
+static struct console_operations ip22zilog_cons_ops = {
 	.write	=	ip22zilog_console_write,
-	.device	=	uart_console_device,
+	.tty_dev	=	uart_console_device,
 	.setup	=	ip22zilog_console_setup,
-	.flags	=	CON_PRINTBUFFER,
-	.index	=	-1,
-	.data	=	&ip22zilog_reg,
 };
+
+#else
+static struct console_operations ip22zilog_cons_ops;
 #endif /* CONFIG_SERIAL_IP22_ZILOG_CONSOLE */
 
 static struct uart_driver ip22zilog_reg = {
@@ -1164,6 +1163,13 @@ static int __init ip22zilog_ports_init(void)
 		panic("IP22-Zilog: Unable to register zs interrupt handler.\n");
 	}
 
+#ifdef CONFIG_SERIAL_IP22_ZILOG_CONSOLE
+	ret = uart_init_console_dfl(&ip22zilog_reg, &ip22zilog_cons_ops,
+					"ttyS");
+	if (ret)
+		return ret;
+#endif
+
 	ret = uart_register_driver(&ip22zilog_reg);
 	if (ret == 0) {
 		int i;
@@ -1182,9 +1188,7 @@ static int __init ip22zilog_init(void)
 {
 	/* IP22 Zilog setup is hard coded, no probing to do.  */
 	ip22zilog_alloc_tables();
-	ip22zilog_ports_init();
-
-	return 0;
+	return ip22zilog_ports_init()
 }
 
 static void __exit ip22zilog_exit(void)

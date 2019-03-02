@@ -884,27 +884,29 @@ static int __init sbd_console_setup(struct console *co, char *options)
 }
 
 static struct uart_driver sbd_reg;
-static struct console sbd_console = {
-	.name	= "duart",
+
+static struct console_operations sdb_cons_ops = {
 	.write	= sbd_console_write,
-	.device	= uart_console_device,
+	.tty_dev	= uart_console_device,
 	.setup	= sbd_console_setup,
-	.flags	= CON_PRINTBUFFER,
-	.index	= -1,
-	.data	= &sbd_reg
 };
+
+static struct console __initdata *sbd_console;
 
 static int __init sbd_serial_console_init(void)
 {
-	sbd_probe_duarts();
-	register_console(&sbd_console);
+	sbd_console = init_console_dfl(&sdb_cons_ops, "duart", &sbd_reg);
+	if (!sbd_console)
+		return -ENOMEM;
 
+	sbd_probe_duarts();
+	register_console(sbd_console);
 	return 0;
 }
 
 console_initcall(sbd_serial_console_init);
 
-#define SERIAL_SB1250_DUART_CONSOLE	&sbd_console
+#define SERIAL_SB1250_DUART_CONSOLE	(sbd_console)
 #else
 #define SERIAL_SB1250_DUART_CONSOLE	NULL
 #endif /* CONFIG_SERIAL_SB1250_DUART_CONSOLE */
@@ -917,7 +919,6 @@ static struct uart_driver sbd_reg = {
 	.major		= TTY_MAJOR,
 	.minor		= SB1250_DUART_MINOR_BASE,
 	.nr		= DUART_MAX_CHIP * DUART_MAX_SIDE,
-	.cons		= SERIAL_SB1250_DUART_CONSOLE,
 };
 
 /* Set up the driver and register it.  */
@@ -927,6 +928,7 @@ static int __init sbd_init(void)
 
 	sbd_probe_duarts();
 
+	sbd_reg.cons = SERIAL_SB1250_DUART_CONSOLE;
 	ret = uart_register_driver(&sbd_reg);
 	if (ret)
 		return ret;

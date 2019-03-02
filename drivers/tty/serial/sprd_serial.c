@@ -1038,24 +1038,29 @@ static int sprd_console_setup(struct console *co, char *options)
 }
 
 static struct uart_driver sprd_uart_driver;
-static struct console sprd_console = {
-	.name = SPRD_TTY_NAME,
+static struct console_operations sprd_ops = {
 	.write = sprd_console_write,
-	.device = uart_console_device,
+	.tty_dev = uart_console_device,
 	.setup = sprd_console_setup,
-	.flags = CON_PRINTBUFFER,
-	.index = -1,
-	.data = &sprd_uart_driver,
 };
+struct console *sprd_console;
 
 static int __init sprd_serial_console_init(void)
 {
-	register_console(&sprd_console);
+	sprd_console = init_console_dfl(&sprd_ops,
+					    SPRD_TTY_NAME,
+					    &sprd_uart_driver);
+	if (!sprd_console)
+		return -ENOMEM;
+
+	register_console(sprd_console);
+	sprd_uart_driver.cons = sprd_console;
+
 	return 0;
 }
 console_initcall(sprd_serial_console_init);
 
-#define SPRD_CONSOLE	(&sprd_console)
+#define SPRD_CONSOLE   (sprd_console)
 
 /* Support for earlycon */
 static void sprd_putc(struct uart_port *port, int c)
@@ -1076,13 +1081,17 @@ static void sprd_early_write(struct console *con, const char *s, unsigned int n)
 	uart_console_write(&dev->port, s, n, sprd_putc);
 }
 
+static struct console_operations sprd_early_cons_ops = {
+	.write = sprd_early_write,
+};
+
 static int __init sprd_early_console_setup(struct earlycon_device *device,
 					   const char *opt)
 {
 	if (!device->port.membase)
 		return -ENODEV;
 
-	device->con->write = sprd_early_write;
+	device->con->ops = &sprd_early_cons_ops;
 	return 0;
 }
 OF_EARLYCON_DECLARE(sprd_serial, "sprd,sc9836-uart",
@@ -1099,7 +1108,6 @@ static struct uart_driver sprd_uart_driver = {
 	.major = 0,
 	.minor = 0,
 	.nr = UART_NR_MAX,
-	.cons = SPRD_CONSOLE,
 };
 
 static int sprd_remove(struct platform_device *dev)

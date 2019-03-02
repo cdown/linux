@@ -29,11 +29,15 @@ static void __ref debug_cons_write(struct console *c,
 #endif
 }
 
+static struct console_operations early_ops = {
+	.write = debug_cons_write,
+};
+
 static struct console early_console_instance = {
 	.name  = "debug",
-	.write = debug_cons_write,
 	.flags = CON_PRINTBUFFER | CON_BOOT,
-	.index = -1
+	.ops = &early_ops,
+	.index = -1,
 };
 
 static int __init setup_early_printk(char *buf)

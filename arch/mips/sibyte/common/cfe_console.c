@@ -64,17 +64,19 @@ static int cfe_console_setup(struct console *cons, char *str)
 	return 0;
 }
 
-static struct console sb1250_cfe_cons = {
-	.name		= "cfe",
+static struct console_operations cfe_ops = {
 	.write		= cfe_console_write,
 	.setup		= cfe_console_setup,
-	.flags		= CON_PRINTBUFFER,
-	.index		= -1,
 };
 
 static int __init sb1250_cfe_console_init(void)
 {
-	register_console(&sb1250_cfe_cons);
+	struct console *sb1250_cfe = init_console_dfl(&cfe_ops, "cfe",
+							  NULL);
+	if (!sb1250_cfe)
+		return -ENOMEM;
+
+	register_console(sb1250_cfe);
 	return 0;
 }
 

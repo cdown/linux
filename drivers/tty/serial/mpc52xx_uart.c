@@ -1668,28 +1668,30 @@ mpc52xx_console_setup(struct console *co, char *options)
 
 static struct uart_driver mpc52xx_uart_driver;
 
-static struct console mpc52xx_console = {
-	.name	= "ttyPSC",
+static struct console_operations mpc52xx_cons_ops = {
 	.write	= mpc52xx_console_write,
-	.device	= uart_console_device,
+	.tty_dev	= uart_console_device,
 	.setup	= mpc52xx_console_setup,
-	.flags	= CON_PRINTBUFFER,
-	.index	= -1,	/* Specified on the cmdline (e.g. console=ttyPSC0) */
-	.data	= &mpc52xx_uart_driver,
 };
 
+static struct console __initdata *mpc52xx_console;
 
 static int __init
 mpc52xx_console_init(void)
 {
+	mpc52xx_console = init_console_dfl(&mpc52xx_cons_ops, "ttyPSC",
+					       &mpc52xx_uart_driver);
+	if (!mpc52xx_console)
+		return -ENOMEM;
+
 	mpc52xx_uart_of_enumerate();
-	register_console(&mpc52xx_console);
+	register_console(mpc52xx_console);
 	return 0;
 }
 
 console_initcall(mpc52xx_console_init);
 
-#define MPC52xx_PSC_CONSOLE &mpc52xx_console
+#define MPC52xx_PSC_CONSOLE (mpc52xx_console)
 #else
 #define MPC52xx_PSC_CONSOLE NULL
 #endif
@@ -1705,7 +1707,6 @@ static struct uart_driver mpc52xx_uart_driver = {
 	.major		= SERIAL_PSC_MAJOR,
 	.minor		= SERIAL_PSC_MINOR,
 	.nr		= MPC52xx_PSC_MAXNUM,
-	.cons		= MPC52xx_PSC_CONSOLE,
 };
 
 /* ======================================================================== */
@@ -1901,6 +1902,7 @@ mpc52xx_uart_init(void)
 
 	printk(KERN_INFO "Serial: MPC52xx PSC UART driver\n");
 
+	mpc52xx_uart_driver.cons = MPC52xx_PSC_CONSOLE;
 	ret = uart_register_driver(&mpc52xx_uart_driver);
 	if (ret) {
 		printk(KERN_ERR "%s: uart_register_driver failed (%i)\n",

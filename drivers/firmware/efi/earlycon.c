@@ -204,6 +204,10 @@ efi_earlycon_write(struct console *con, const char *str, unsigned int num)
 	}
 }
 
+static struct console_operations efi_earlycon_ops = {
+	.write = efi_earlycon_write,
+};
+
 static int __init efi_earlycon_setup(struct earlycon_device *device,
 				     const char *opt)
 {
@@ -239,7 +243,7 @@ static int __init efi_earlycon_setup(struct earlycon_device *device,
 	for (i = 0; i < (yres - efi_y) / font->height; i++)
 		efi_earlycon_scroll_up();
 
-	device->con->write = efi_earlycon_write;
+	device->con->ops = &efi_earlycon_ops;
 	earlycon_console = device->con;
 	return 0;
 }

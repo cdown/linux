@@ -103,7 +103,7 @@ static void braille_write(u16 *buf)
 	*c++ = csum;
 	*c++ = ETX;
 
-	braille_co->write(braille_co, data, c - data);
+	braille_co->ops->write(braille_co, data, c - data);
 }
 
 /* Follow the VC cursor*/
@@ -356,8 +356,8 @@ int braille_register_console(struct console *console, int index,
 		console_options = "57600o8";
 	if (braille_co)
 		return -ENODEV;
-	if (console->setup) {
-		ret = console->setup(console, console_options);
+	if (console->ops->setup) {
+		ret = console->ops->setup(console, console_options);
 		if (ret != 0)
 			return ret;
 	}
