@@ -942,23 +942,14 @@ static int sunsab_console_setup(struct console *con, char *options)
 	return 0;
 }
 
-static struct console sunsab_console = {
-	.name	=	"ttyS",
+static struct console_operations sunsab_cons_ops = {
 	.write	=	sunsab_console_write,
-	.device	=	uart_console_device,
+	.tty_dev	=	uart_console_device,
 	.setup	=	sunsab_console_setup,
-	.flags	=	CON_PRINTBUFFER,
-	.index	=	-1,
-	.data	=	&sunsab_reg,
 };
 
-static inline struct console *SUNSAB_CONSOLE(void)
-{
-	return &sunsab_console;
-}
 #else
-#define SUNSAB_CONSOLE()	(NULL)
-#define sunsab_console_init()	do { } while (0)
+static struct console_operations sunsab_cons_ops;
 #endif
 
 static int sunsab_init_one(struct uart_sunsab_port *up,
@@ -1021,6 +1012,12 @@ static int sab_probe(struct platform_device *op)
 	struct uart_sunsab_port *up;
 	int err;
 
+#ifdef CONFIG_SERIAL_SUNSAB_CONSOLE
+	err = uart_init_console_dfl(&sunsab_reg, &sunsab_cons_ops, "ttyS");
+	if (err)
+		return err;
+#endif
+
 	up = &sunsab_ports[inst * 2];
 
 	err = sunsab_init_one(&up[0], op,
@@ -1035,13 +1032,11 @@ static int sab_probe(struct platform_device *op)
 	if (err)
 		goto out1;
 
-	sunserial_console_match(SUNSAB_CONSOLE(), op->dev.of_node,
-				&sunsab_reg, up[0].port.line,
-				false);
+	sunserial_console_match(sunsab_reg.cons, op->dev.of_node, &sunsab_reg,
+				up[0].port.line, false);
 
-	sunserial_console_match(SUNSAB_CONSOLE(), op->dev.of_node,
-				&sunsab_reg, up[1].port.line,
-				false);
+	sunserial_console_match(sunsab_reg.cons, op->dev.of_node, &sunsab_reg,
+				up[1].port.line, false);
 
 	err = uart_add_one_port(&sunsab_reg, &up[0].port);
 	if (err)
@@ -1068,6 +1063,7 @@ out1:
 		   up[0].port.membase,
 		   sizeof(union sab82532_async_regs));
 out:
+	uart_put_console(&sunsab_reg);
 	return err;
 }
 

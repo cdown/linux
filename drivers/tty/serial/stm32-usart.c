@@ -1699,20 +1699,14 @@ static int stm32_usart_console_setup(struct console *co, char *options)
 	return uart_set_options(&stm32port->port, co, baud, parity, bits, flow);
 }
 
-static struct console stm32_console = {
-	.name		= STM32_SERIAL_NAME,
-	.device		= uart_console_device,
+static struct console_operations stm32_cons_ops = {
+	.tty_dev		= uart_console_device,
 	.write		= stm32_usart_console_write,
 	.setup		= stm32_usart_console_setup,
-	.flags		= CON_PRINTBUFFER,
-	.index		= -1,
-	.data		= &stm32_usart_driver,
 };
 
-#define STM32_SERIAL_CONSOLE (&stm32_console)
-
 #else
-#define STM32_SERIAL_CONSOLE NULL
+static struct console_operations stm32_cons_ops;
 #endif /* CONFIG_SERIAL_STM32_CONSOLE */
 
 static struct uart_driver stm32_usart_driver = {
@@ -1721,7 +1715,6 @@ static struct uart_driver stm32_usart_driver = {
 	.major		= 0,
 	.minor		= 0,
 	.nr		= STM32_MAX_PORTS,
-	.cons		= STM32_SERIAL_CONSOLE,
 };
 
 static int __maybe_unused stm32_usart_serial_en_wakeup(struct uart_port *port,
@@ -1866,6 +1859,13 @@ static int __init stm32_usart_init(void)
 	int ret;
 
 	pr_info("%s\n", banner);
+
+#ifdef CONFIG_SERIAL_STM32_CONSOLE
+	ret = uart_init_console_dfl(&stm32_usart_driver, &stm32_cons_ops,
+					STM32_SERIAL_NAME);
+	if (ret)
+		return ret;
+#endif
 
 	ret = uart_register_driver(&stm32_usart_driver);
 	if (ret)

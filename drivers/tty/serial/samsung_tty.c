@@ -1713,22 +1713,32 @@ s3c24xx_serial_verify_port(struct uart_port *port, struct serial_struct *ser)
 
 #ifdef CONFIG_SERIAL_SAMSUNG_CONSOLE
 
-static struct console s3c24xx_serial_console;
+static struct console *s3c24xx_serial_console;
+static struct console_operations s3c24xx_serial_console_ops;
+static struct uart_driver s3c24xx_uart_drv;
 
-static void __init s3c24xx_serial_register_console(void)
+static int __init s3c24xx_serial_register_console(void)
 {
-	register_console(&s3c24xx_serial_console);
+	s3c24xx_serial_console = init_console_dfl(
+					&s3c24xx_serial_console_ops,
+					S3C24XX_SERIAL_NAME,
+					&s3c24xx_uart_drv);
+	if (!s3c24xx_serial_console)
+		return -ENOMEM;
+
+	register_console(s3c24xx_serial_console);
+	return 0;
 }
 
 static void s3c24xx_serial_unregister_console(void)
 {
-	if (s3c24xx_serial_console.flags & CON_ENABLED)
-		unregister_console(&s3c24xx_serial_console);
+	if (s3c24xx_serial_console->flags & CON_ENABLED)
+		unregister_console(s3c24xx_serial_console);
 }
 
-#define S3C24XX_SERIAL_CONSOLE &s3c24xx_serial_console
+#define S3C24XX_SERIAL_CONSOLE s3c24xx_serial_console
 #else
-static inline void s3c24xx_serial_register_console(void) { }
+static inline int s3c24xx_serial_register_console(void) { }
 static inline void s3c24xx_serial_unregister_console(void) { }
 #define S3C24XX_SERIAL_CONSOLE NULL
 #endif
@@ -1806,7 +1816,6 @@ static struct uart_driver s3c24xx_uart_drv = {
 	.owner		= THIS_MODULE,
 	.driver_name	= "s3c2410_serial",
 	.nr		= CONFIG_SERIAL_SAMSUNG_UARTS,
-	.cons		= S3C24XX_SERIAL_CONSOLE,
 	.dev_name	= S3C24XX_SERIAL_NAME,
 	.major		= S3C24XX_SERIAL_MAJOR,
 	.minor		= S3C24XX_SERIAL_MINOR,
@@ -2254,6 +2263,7 @@ static int s3c24xx_serial_probe(struct platform_device *pdev)
 		return ret;
 
 	if (!s3c24xx_uart_drv.state) {
+		s3c24xx_uart_drv.cons = S3C24XX_SERIAL_CONSOLE;
 		ret = uart_register_driver(&s3c24xx_uart_drv);
 		if (ret < 0) {
 			pr_err("Failed to register Samsung UART driver\n");
@@ -2603,14 +2613,10 @@ s3c24xx_serial_console_setup(struct console *co, char *options)
 	return uart_set_options(port, co, baud, parity, bits, flow);
 }
 
-static struct console s3c24xx_serial_console = {
-	.name		= S3C24XX_SERIAL_NAME,
-	.device		= uart_console_device,
-	.flags		= CON_PRINTBUFFER,
-	.index		= -1,
+static struct console_operations s3c24xx_serial_console_ops = {
 	.write		= s3c24xx_serial_console_write,
 	.setup		= s3c24xx_serial_console_setup,
-	.data		= &s3c24xx_uart_drv,
+	.tty_dev		= uart_console_device,
 };
 #endif /* CONFIG_SERIAL_SAMSUNG_CONSOLE */
 
@@ -2983,13 +2989,17 @@ static void samsung_early_write(struct console *con, const char *s,
 	uart_console_write(&dev->port, s, n, samsung_early_putc);
 }
 
+static struct console_operations samsung_early_console_ops = {
+	.write = samsung_early_write,
+};
+
 static int __init samsung_early_console_setup(struct earlycon_device *device,
 					      const char *opt)
 {
 	if (!device->port.membase)
 		return -ENODEV;
 
-	device->con->write = samsung_early_write;
+	device->con->ops = &samsung_early_console_ops;
 	return 0;
 }
 

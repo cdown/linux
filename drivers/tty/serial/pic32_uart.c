@@ -750,20 +750,24 @@ static int pic32_console_setup(struct console *co, char *options)
 }
 
 static struct uart_driver pic32_uart_driver;
-static struct console pic32_console = {
-	.name		= PIC32_SDEV_NAME,
+
+static struct console_operations pic32_cons_ops = {
 	.write		= pic32_console_write,
-	.device		= uart_console_device,
+	.tty_dev		= uart_console_device,
 	.setup		= pic32_console_setup,
-	.flags		= CON_PRINTBUFFER,
-	.index		= -1,
-	.data		= &pic32_uart_driver,
 };
-#define PIC32_SCONSOLE (&pic32_console)
+
+static struct console *pic32_console;
+#define PIC32_SCONSOLE (pic32_console)
 
 static int __init pic32_console_init(void)
 {
-	register_console(&pic32_console);
+	pic32_console = init_console_dfl(&pic32_cons_ops, PIC32_SDEV_NAME,
+					     &pic32_uart_driver);
+	if (!pic32_console)
+		return -ENOMEM;
+
+	register_console(pic32_console);
 	return 0;
 }
 console_initcall(pic32_console_init);
@@ -773,8 +777,8 @@ console_initcall(pic32_console_init);
  */
 static int __init pic32_late_console_init(void)
 {
-	if (!(pic32_console.flags & CON_ENABLED))
-		register_console(&pic32_console);
+	if (!pic32_console)
+		return pic32_console_init();
 
 	return 0;
 }
@@ -790,7 +794,6 @@ static struct uart_driver pic32_uart_driver = {
 	.driver_name		= PIC32_DEV_NAME,
 	.dev_name		= PIC32_SDEV_NAME,
 	.nr			= PIC32_MAX_UARTS,
-	.cons			= PIC32_SCONSOLE,
 };
 
 static int pic32_uart_probe(struct platform_device *pdev)
@@ -868,7 +871,7 @@ static int pic32_uart_probe(struct platform_device *pdev)
 	}
 
 #ifdef CONFIG_SERIAL_PIC32_CONSOLE
-	if (uart_console(port) && (pic32_console.flags & CON_ENABLED)) {
+	if (uart_console(port) && pic32_console) {
 		/* The peripheral clock has been enabled by console_setup,
 		 * so disable it till the port is used.
 		 */
@@ -921,6 +924,7 @@ static int __init pic32_uart_init(void)
 {
 	int ret;
 
+	pic32_uart_driver.cons = PIC32_SCONSOLE;
 	ret = uart_register_driver(&pic32_uart_driver);
 	if (ret) {
 		pr_err("failed to register %s:%d\n",
@@ -941,7 +945,8 @@ arch_initcall(pic32_uart_init);
 static void __exit pic32_uart_exit(void)
 {
 #ifdef CONFIG_SERIAL_PIC32_CONSOLE
-	unregister_console(&pic32_console);
+	unregister_console(pic32_console);
+	put_console(pic32_console);
 #endif
 	platform_driver_unregister(&pic32_uart_platform_driver);
 	uart_unregister_driver(&pic32_uart_driver);

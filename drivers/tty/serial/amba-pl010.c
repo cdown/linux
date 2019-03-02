@@ -659,20 +659,14 @@ static int __init pl010_console_setup(struct console *co, char *options)
 	return uart_set_options(&uap->port, co, baud, parity, bits, flow);
 }
 
-static struct uart_driver amba_reg;
-static struct console amba_console = {
-	.name		= "ttyAM",
+static struct console_operations amba_cons_ops = {
 	.write		= pl010_console_write,
-	.device		= uart_console_device,
+	.tty_dev		= uart_console_device,
 	.setup		= pl010_console_setup,
-	.flags		= CON_PRINTBUFFER,
-	.index		= -1,
-	.data		= &amba_reg,
 };
 
-#define AMBA_CONSOLE	&amba_console
 #else
-#define AMBA_CONSOLE	NULL
+static struct console_operations amba_cons_ops;
 #endif
 
 static DEFINE_MUTEX(amba_reg_lock);
@@ -683,7 +677,6 @@ static struct uart_driver amba_reg = {
 	.major			= SERIAL_AMBA_MAJOR,
 	.minor			= SERIAL_AMBA_MINOR,
 	.nr			= UART_NR,
-	.cons			= AMBA_CONSOLE,
 };
 
 static int pl010_probe(struct amba_device *dev, const struct amba_id *id)
@@ -732,20 +725,36 @@ static int pl010_probe(struct amba_device *dev, const struct amba_id *id)
 
 	mutex_lock(&amba_reg_lock);
 	if (!amba_reg.state) {
+#ifdef CONFIG_SERIAL_AMBA_PL010_CONSOLE
+		ret = uart_init_console_dfl(&amba_reg, &amba_cons_ops, "ttyAM");
+		if (ret < 0) {
+			mutex_unlock(&amba_reg_lock);
+			goto out;
+		}
+#endif
+
 		ret = uart_register_driver(&amba_reg);
 		if (ret < 0) {
 			mutex_unlock(&amba_reg_lock);
-			dev_err(uap->port.dev,
-				"Failed to register AMBA-PL010 driver\n");
-			return ret;
+			goto out;
 		}
 	}
 	mutex_unlock(&amba_reg_lock);
 
 	ret = uart_add_one_port(&amba_reg, &uap->port);
 	if (ret)
-		amba_ports[i] = NULL;
+		goto out_unregister;
 
+	return 0;
+
+out_unregister:
+	uart_unregister_driver(&amba_reg);
+out:
+	amba_ports[i] = NULL;
+	uart_put_console(&amba_reg);
+	kfree(uap);
+
+	pr_err("Failed to register AMBA-PL010 driver\n");
 	return ret;
 }
 

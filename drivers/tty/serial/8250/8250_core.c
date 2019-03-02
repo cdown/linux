@@ -658,30 +658,34 @@ static int univ8250_console_match(struct console *co, char *name, int idx,
 	return -ENODEV;
 }
 
-static struct console univ8250_console = {
-	.name		= "ttyS",
+static struct console_operations univ8250_console_ops = {
 	.write		= univ8250_console_write,
-	.device		= uart_console_device,
+	.tty_dev		= uart_console_device,
 	.setup		= univ8250_console_setup,
 	.exit		= univ8250_console_exit,
 	.match		= univ8250_console_match,
-	.flags		= CON_PRINTBUFFER | CON_ANYTIME,
-	.index		= -1,
-	.data		= &serial8250_reg,
 };
+
+static struct console __initdata *univ8250_console;
 
 static int __init univ8250_console_init(void)
 {
 	if (nr_uarts == 0)
 		return -ENODEV;
 
+	univ8250_console = init_console_dfl(&univ8250_console_ops, "ttyS",
+						&serial8250_reg);
+	if (!univ8250_console)
+		return -ENOMEM;
+
+	univ8250_console->flags |= CON_ANYTIME;
 	serial8250_isa_init_ports();
-	register_console(&univ8250_console);
+	register_console(univ8250_console);
 	return 0;
 }
 console_initcall(univ8250_console_init);
 
-#define SERIAL8250_CONSOLE	(&univ8250_console)
+#define SERIAL8250_CONSOLE	(univ8250_console)
 #else
 #define SERIAL8250_CONSOLE	NULL
 #endif
@@ -692,7 +696,6 @@ static struct uart_driver serial8250_reg = {
 	.dev_name		= "ttyS",
 	.major			= TTY_MAJOR,
 	.minor			= 64,
-	.cons			= SERIAL8250_CONSOLE,
 };
 
 /*
@@ -1165,6 +1168,8 @@ static int __init serial8250_init(void)
 	pr_info("Serial: 8250/16550 driver, %d ports, IRQ sharing %sabled\n",
 		nr_uarts, share_irqs ? "en" : "dis");
 
+	serial8250_reg.cons = SERIAL8250_CONSOLE;
+
 #ifdef CONFIG_SPARC
 	ret = sunserial_register_minors(&serial8250_reg, UART_NR);
 #else
@@ -1207,6 +1212,7 @@ unreg_uart_drv:
 	uart_unregister_driver(&serial8250_reg);
 #endif
 out:
+	put_console(SERIAL8250_CONSOLE);
 	return ret;
 }
 

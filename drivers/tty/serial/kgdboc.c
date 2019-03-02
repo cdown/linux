@@ -195,7 +195,7 @@ static int configure_kgdboc(void)
 
 	for_each_console(cons) {
 		int idx;
-		if (cons->device && cons->device(cons, &idx) == p &&
+		if (cons->ops->tty_dev && cons->ops->tty_dev(cons, &idx) == p &&
 		    idx == tty_line) {
 			kgdboc_io_ops.cons = cons;
 			break;
@@ -432,8 +432,9 @@ static int kgdboc_earlycon_get_char(void)
 {
 	char c;
 
-	if (!kgdboc_earlycon_io_ops.cons->read(kgdboc_earlycon_io_ops.cons,
-					       &c, 1))
+	if (!kgdboc_earlycon_io_ops.cons->ops->read(
+						kgdboc_earlycon_io_ops.cons,
+						&c, 1))
 		return NO_POLL_CHAR;
 
 	return c;
@@ -441,7 +442,7 @@ static int kgdboc_earlycon_get_char(void)
 
 static void kgdboc_earlycon_put_char(u8 chr)
 {
-	kgdboc_earlycon_io_ops.cons->write(kgdboc_earlycon_io_ops.cons, &chr,
+	kgdboc_earlycon_io_ops.cons->ops->write(kgdboc_earlycon_io_ops.cons, &chr,
 					   1);
 }
 
@@ -478,7 +479,7 @@ static int kgdboc_earlycon_deferred_exit(struct console *con)
 	 * function.  For now, restore the original exit() function pointer
 	 * as a sentinal that we've hit this point.
 	 */
-	con->exit = earlycon_orig_exit;
+	con->ops->exit = earlycon_orig_exit;
 
 	return 0;
 }
@@ -488,20 +489,20 @@ static void kgdboc_earlycon_deinit(void)
 	if (!kgdboc_earlycon_io_ops.cons)
 		return;
 
-	if (kgdboc_earlycon_io_ops.cons->exit == kgdboc_earlycon_deferred_exit)
+	if (kgdboc_earlycon_io_ops.cons->ops->exit == kgdboc_earlycon_deferred_exit)
 		/*
 		 * kgdboc_earlycon is exiting but original boot console exit
 		 * was never called (AKA kgdboc_earlycon_deferred_exit()
 		 * didn't ever run).  Undo our trap.
 		 */
-		kgdboc_earlycon_io_ops.cons->exit = earlycon_orig_exit;
-	else if (kgdboc_earlycon_io_ops.cons->exit)
+		kgdboc_earlycon_io_ops.cons->ops->exit = earlycon_orig_exit;
+	else if (kgdboc_earlycon_io_ops.cons->ops->exit)
 		/*
 		 * We skipped calling the exit() routine so we could try to
 		 * keep using the boot console even after it went away.  We're
 		 * finally done so call the function now.
 		 */
-		kgdboc_earlycon_io_ops.cons->exit(kgdboc_earlycon_io_ops.cons);
+		kgdboc_earlycon_io_ops.cons->ops->exit(kgdboc_earlycon_io_ops.cons);
 
 	kgdboc_earlycon_io_ops.cons = NULL;
 }
@@ -530,7 +531,7 @@ static int __init kgdboc_earlycon_init(char *opt)
 	 */
 	console_lock();
 	for_each_console(con) {
-		if (con->write && con->read &&
+		if (con->ops->write && con->ops->read &&
 		    (con->flags & (CON_BOOT | CON_ENABLED)) &&
 		    (!opt || !opt[0] || strcmp(con->name, opt) == 0))
 			break;
@@ -565,8 +566,8 @@ static int __init kgdboc_earlycon_init(char *opt)
 		pr_info("Failed to register kgdb with earlycon\n");
 	} else {
 		/* Trap exit so we can keep earlycon longer if needed. */
-		earlycon_orig_exit = con->exit;
-		con->exit = kgdboc_earlycon_deferred_exit;
+		earlycon_orig_exit = con->ops->exit;
+		con->ops->exit = kgdboc_earlycon_deferred_exit;
 	}
 
 unlock:
