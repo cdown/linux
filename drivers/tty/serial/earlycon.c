@@ -30,6 +30,7 @@ static struct console early_con = {
 	.name =		"uart",		/* fixed up at earlycon registration */
 	.flags =	CON_PRINTBUFFER | CON_BOOT,
 	.index =	0,
+	.is_static =	1,
 };
 
 static struct earlycon_device early_console_dev = {
@@ -148,7 +149,7 @@ static int __init register_earlycon(char *buf, const struct earlycon_id *match)
 	earlycon_print_info(&early_console_dev);
 	if (err < 0)
 		return err;
-	if (!early_console_dev.con->write)
+	if (!early_console_dev.con->ops || !early_console_dev.con->ops->write)
 		return -ENODEV;
 
 	register_console(early_console_dev.con);
@@ -309,7 +310,7 @@ int __init of_setup_earlycon(const struct earlycon_id *match,
 	earlycon_print_info(&early_console_dev);
 	if (err < 0)
 		return err;
-	if (!early_console_dev.con->write)
+	if (!early_console_dev.con->ops || !early_console_dev.con->ops->write)
 		return -ENODEV;
 
 

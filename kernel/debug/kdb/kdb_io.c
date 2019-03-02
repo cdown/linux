@@ -574,7 +574,7 @@ static void kdb_msg_write(const char *msg, int msg_len)
 		 * for this calling context.
 		 */
 		++oops_in_progress;
-		c->write(c, msg, msg_len);
+		c->ops->write(c, msg, msg_len);
 		--oops_in_progress;
 		touch_nmi_watchdog();
 	}

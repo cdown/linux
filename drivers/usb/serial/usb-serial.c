@@ -964,7 +964,7 @@ static int usb_serial_probe(struct usb_interface *interface,
 	struct device *ddev = &interface->dev;
 	struct usb_device *dev = interface_to_usbdev(interface);
 	struct usb_serial *serial = NULL;
-	struct usb_serial_port *port;
+	struct usb_serial_port *port = NULL;
 	struct usb_serial_endpoints *epds;
 	struct usb_serial_driver *type = NULL;
 	int retval;
@@ -1154,13 +1154,20 @@ static int usb_serial_probe(struct usb_interface *interface,
 			dev_err(ddev, "Error registering port device, continuing\n");
 	}
 
-	if (num_ports > 0)
-		usb_serial_console_init(serial->port[0]->minor);
+	if (num_ports > 0) {
+		retval = usb_serial_console_init(serial->port[0]->minor);
+		if (retval < 0)
+			goto err_free_dev;
+	}
 exit:
 	kfree(epds);
 	module_put(type->driver.owner);
 	return 0;
 
+err_free_dev:
+	if (port)
+		put_device(&port->dev);
+	release_minors(serial);
 err_free_epds:
 	kfree(epds);
 err_release_sibling:
