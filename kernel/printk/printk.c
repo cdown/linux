@@ -2892,6 +2892,68 @@ static int __init keep_bootcon_setup(char *str)
 
 early_param("keep_bootcon", keep_bootcon_setup);
 
+static ssize_t loglevel_show(struct device *dev, struct device_attribute *attr,
+			     char *buf)
+{
+	struct console *con = container_of(dev, struct console, dev);
+
+	/*
+	 * We only write either on new console (in which case loglevel_show
+	 * cannot be called yet) or from loglevel_store, so it's enough to do
+	 * READ_ONCE() without holding console_lock().
+	 */
+	return sprintf(buf, "%d\n", READ_ONCE(con->level));
+}
+
+static ssize_t loglevel_store(struct device *dev, struct device_attribute *attr,
+			      const char *buf, size_t size)
+{
+	struct console *con = container_of(dev, struct console, dev);
+	ssize_t ret;
+	int tmp;
+
+	ret = kstrtoint(buf, 10, &tmp);
+	if (ret < 0)
+		return ret;
+
+	if (tmp < LOGLEVEL_EMERG)
+		return -ERANGE;
+
+	/*
+	 * Mimic the behavior of /dev/kmsg with respect to minimum_loglevel.
+	 */
+	if (tmp < minimum_console_loglevel)
+		tmp = minimum_console_loglevel;
+
+	WRITE_ONCE(con->level, tmp);
+	return size;
+}
+
+static DEVICE_ATTR_RW(loglevel);
+
+static ssize_t enabled_show(struct device *dev, struct device_attribute *attr,
+			    char *buf)
+{
+	struct console *con = container_of(dev, struct console, dev);
+	ssize_t ret;
+
+	console_lock();
+	ret = sprintf(buf, "%d\n", !!(con->flags & CON_ENABLED));
+	console_unlock();
+
+	return ret;
+}
+
+static DEVICE_ATTR_RO(enabled);
+
+static struct attribute *console_sysfs_attrs[] = {
+	&dev_attr_loglevel.attr,
+	&dev_attr_enabled.attr,
+	NULL,
+};
+
+ATTRIBUTE_GROUPS(console_sysfs);
+
 static void console_release(struct device *dev)
 {
 	struct console *con = container_of(dev, struct console, dev);
@@ -3328,7 +3390,8 @@ static int __init printk_late_init(void)
 	printk_sysctl_init();
 
 	console_class = class_create(THIS_MODULE, "console");
-	WARN_ON(IS_ERR(console_class));
+	if (!WARN_ON(IS_ERR(console_class)))
+		console_class->dev_groups = console_sysfs_groups;
 
 	printk_late_done = 1;
 	for_each_console(con)
