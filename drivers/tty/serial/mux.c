@@ -404,19 +404,35 @@ static int mux_console_setup(struct console *co, char *options)
         return 0;
 }
 
-static struct console mux_console = {
-	.name =		"ttyB",
+static struct console_operations mux_cons_ops = {
 	.write =	mux_console_write,
-	.device =	uart_console_device,
+	.tty_dev =	uart_console_device,
 	.setup =	mux_console_setup,
-	.flags =	CON_ENABLED | CON_PRINTBUFFER,
-	.index =	0,
-	.data =		&mux_driver,
 };
 
-#define MUX_CONSOLE	&mux_console
+static struct console __initdata *mux_console;
+
+static int register_mux_console(void)
+{
+	mux_console = init_console_dfl(&mux_cons_ops, "ttyB", &mux_driver);
+	if (!mux_console)
+		return -ENOMEM;
+
+	register_console(mux_console);
+	return 0;
+}
+
+static void unregister_mux_console(void)
+{
+	unregister_console(mux_console);
+	put_console(mux_console);
+}
+
+#define MUX_CONSOLE	(mux_console)
 #else
 #define MUX_CONSOLE	NULL
+static int register_mux_console(void) { return 0; }
+static void ungerister_mux_console(void) {}
 #endif
 
 static const struct uart_ops mux_pops = {
@@ -563,17 +579,19 @@ static struct parisc_driver serial_mux_driver __refdata = {
  */
 static int __init mux_init(void)
 {
+	int ret;
+
 	register_parisc_driver(&builtin_serial_mux_driver);
 	register_parisc_driver(&serial_mux_driver);
 
-	if(port_cnt > 0) {
+	if (port_cnt > 0) {
+		ret = register_mux_console();
+		if (ret)
+			return ret;
+
 		/* Start the Mux timer */
 		timer_setup(&mux_timer, mux_poll, 0);
 		mod_timer(&mux_timer, jiffies + MUX_POLL_DELAY);
-
-#ifdef CONFIG_SERIAL_MUX_CONSOLE
-	        register_console(&mux_console);
-#endif
 	}
 
 	return 0;
@@ -589,9 +607,7 @@ static void __exit mux_exit(void)
 	/* Delete the Mux timer. */
 	if(port_cnt > 0) {
 		del_timer_sync(&mux_timer);
-#ifdef CONFIG_SERIAL_MUX_CONSOLE
-		unregister_console(&mux_console);
-#endif
+		unregister_mux_console();
 	}
 
 	unregister_parisc_driver(&builtin_serial_mux_driver);
