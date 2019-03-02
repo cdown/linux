@@ -796,25 +796,29 @@ sa1100_console_setup(struct console *co, char *options)
 }
 
 static struct uart_driver sa1100_reg;
-static struct console sa1100_console = {
-	.name		= "ttySA",
+
+static struct console_operations sa1100_cons_ops = {
 	.write		= sa1100_console_write,
-	.device		= uart_console_device,
+	.tty_dev		= uart_console_device,
 	.setup		= sa1100_console_setup,
-	.flags		= CON_PRINTBUFFER,
-	.index		= -1,
-	.data		= &sa1100_reg,
 };
+
+static struct console __initdata *sa1100_console;
 
 static int __init sa1100_rs_console_init(void)
 {
+	sa1100_console = init_console_dfl(&sa1100_cons_ops, "ttySA",
+					      &sa1100_reg);
+	if (!sa1100_console)
+		return -ENOMEM;
+
 	sa1100_init_ports();
-	register_console(&sa1100_console);
+	register_console(sa1100_console);
 	return 0;
 }
 console_initcall(sa1100_rs_console_init);
 
-#define SA1100_CONSOLE	&sa1100_console
+#define SA1100_CONSOLE	(sa1100_console)
 #else
 #define SA1100_CONSOLE	NULL
 #endif
@@ -826,7 +830,6 @@ static struct uart_driver sa1100_reg = {
 	.major			= SERIAL_SA1100_MAJOR,
 	.minor			= MINOR_START,
 	.nr			= NR_PORTS,
-	.cons			= SA1100_CONSOLE,
 };
 
 static int sa1100_serial_suspend(struct platform_device *dev, pm_message_t state)
@@ -923,6 +926,7 @@ static int __init sa1100_serial_init(void)
 
 	sa1100_init_ports();
 
+	sd1100_reg.cons	= SA1100_CONSOLE;
 	ret = uart_register_driver(&sa1100_reg);
 	if (ret == 0) {
 		ret = platform_driver_register(&sa11x0_serial_driver);

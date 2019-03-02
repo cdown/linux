@@ -17,7 +17,7 @@ static void stm_console_unlink(struct stm_source_data *data);
 
 static struct stm_console {
 	struct stm_source_data	data;
-	struct console		console;
+	struct console		*console;
 } stm_console = {
 	.data	= {
 		.name		= "console",
@@ -30,20 +30,25 @@ static struct stm_console {
 static void
 stm_console_write(struct console *con, const char *buf, unsigned len)
 {
-	struct stm_console *sc = container_of(con, struct stm_console, console);
+	struct stm_console *sc = con->data;
 
 	stm_source_write(&sc->data, 0, buf, len);
 }
+
+static struct console_operations stm_cons_ops = {
+	.write = stm_console_write,
+};
 
 static int stm_console_link(struct stm_source_data *data)
 {
 	struct stm_console *sc = container_of(data, struct stm_console, data);
 
-	strcpy(sc->console.name, "stm_console");
-	sc->console.write = stm_console_write;
-	sc->console.flags = CON_ENABLED | CON_PRINTBUFFER;
-	register_console(&sc->console);
+	sc->console = init_console_dfl(&stm_cons_ops, "stm_console", data);
+	if (!sc->console)
+		return -ENOMEM;
 
+	sc->console->flags |= CON_ENABLED;
+	register_console(sc->console);
 	return 0;
 }
 
@@ -51,7 +56,7 @@ static void stm_console_unlink(struct stm_source_data *data)
 {
 	struct stm_console *sc = container_of(data, struct stm_console, data);
 
-	unregister_console(&sc->console);
+	unregister_console(sc->console);
 }
 
 static int stm_console_init(void)

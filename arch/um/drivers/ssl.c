@@ -135,14 +135,14 @@ static int ssl_console_setup(struct console *co, char *options)
 }
 
 /* No locking for register_console call - relies on single-threaded initcalls */
-static struct console ssl_cons = {
-	.name		= "ttyS",
+
+static struct console_operations ssl_cons_ops = {
 	.write		= ssl_console_write,
-	.device		= ssl_console_device,
+	.tty_dev		= ssl_console_device,
 	.setup		= ssl_console_setup,
-	.flags		= CON_PRINTBUFFER|CON_ANYTIME,
-	.index		= -1,
 };
+
+static struct console *ssl_cons;
 
 static int ssl_init(void)
 {
@@ -153,10 +153,16 @@ static int ssl_init(void)
 	printk(KERN_INFO "Initializing software serial port version %d\n",
 	       ssl_version);
 
+	ssl_cons = init_console_dfl(&ssl_cons_ops, "ttyS", NULL);
+	if (!ssl_cons)
+		return -ENOMEM;
+
+	ssl_cons->flags |= CON_ANYTIME;
+
 	err = register_lines(&driver, &ssl_ops, serial_lines,
 				    ARRAY_SIZE(serial_lines));
 	if (err)
-		return err;
+		goto out;
 
 	new_title = add_xterm_umid(opts.xterm_title);
 	if (new_title != NULL)
@@ -175,6 +181,9 @@ static int ssl_init(void)
 	ssl_init_done = 1;
 	register_console(&ssl_cons);
 	return 0;
+out:
+	kfree(ssl_cons);
+	return err;
 }
 late_initcall(ssl_init);
 
@@ -182,7 +191,10 @@ static void ssl_exit(void)
 {
 	if (!ssl_init_done)
 		return;
+
+	unregister_console(&ssl_cons);
 	close_lines(serial_lines, ARRAY_SIZE(serial_lines));
+	put_device(&ssl_cons->dev);
 }
 __uml_exitcall(ssl_exit);
 
