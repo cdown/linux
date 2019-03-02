@@ -582,11 +582,10 @@ static struct notifier_block on_reboot_nb = {
 /*
  *  The console structure for the 3270 console
  */
-static struct console con3270 = {
-	.name	 = "tty3270",
+
+static struct console_operations con3270_cons_ops = {
 	.write	 = con3270_write,
-	.device	 = con3270_device,
-	.flags	 = CON_PRINTBUFFER,
+	.tty_dev	 = con3270_device,
 };
 
 /*
@@ -595,6 +594,7 @@ static struct console con3270 = {
 static int __init
 con3270_init(void)
 {
+	struct console *con3270;
 	struct raw3270 *rp;
 	void *cbuf;
 	int i;
@@ -608,6 +608,10 @@ con3270_init(void)
 		cpcmd("TERM CONMODE 3270", NULL, 0, NULL);
 		cpcmd("TERM AUTOCR OFF", NULL, 0, NULL);
 	}
+
+	con3270 = init_console_dfl(&con3270_cons_ops, "tty3270", NULL);
+	if (!con3270)
+		return -ENOMEM;
 
 	rp = raw3270_setup_console();
 	if (IS_ERR(rp))
@@ -643,7 +647,7 @@ con3270_init(void)
 	condev->input = alloc_string(&condev->freemem, 80);
 	atomic_notifier_chain_register(&panic_notifier_list, &on_panic_nb);
 	register_reboot_notifier(&on_reboot_nb);
-	register_console(&con3270);
+	register_console(con3270);
 	return 0;
 }
 

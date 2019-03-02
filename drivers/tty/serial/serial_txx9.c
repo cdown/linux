@@ -952,24 +952,29 @@ static int __init serial_txx9_console_setup(struct console *co, char *options)
 }
 
 static struct uart_driver serial_txx9_reg;
-static struct console serial_txx9_console = {
-	.name		= TXX9_TTY_NAME,
+
+static struct console_operations txx9_cons_ops = {
 	.write		= serial_txx9_console_write,
-	.device		= uart_console_device,
+	.tty_dev		= uart_console_device,
 	.setup		= serial_txx9_console_setup,
-	.flags		= CON_PRINTBUFFER,
-	.index		= -1,
-	.data		= &serial_txx9_reg,
 };
+
+static struct console __initdata *serial_txx9_console;
 
 static int __init serial_txx9_console_init(void)
 {
-	register_console(&serial_txx9_console);
+	serial_txx9_console = init_console_dfl(&txx9_cons_ops,
+						   TXX9_TTY_NAME,
+						   &serial_txx9_reg);
+	if (!serial_txx9_console)
+		return -ENOMEM;
+
+	register_console(serial_txx9_console);
 	return 0;
 }
 console_initcall(serial_txx9_console_init);
 
-#define SERIAL_TXX9_CONSOLE	&serial_txx9_console
+#define SERIAL_TXX9_CONSOLE	(serial_txx9_console)
 #else
 #define SERIAL_TXX9_CONSOLE	NULL
 #endif
@@ -981,7 +986,6 @@ static struct uart_driver serial_txx9_reg = {
 	.major			= TXX9_TTY_MAJOR,
 	.minor			= TXX9_TTY_MINOR_START,
 	.nr			= UART_NR,
-	.cons			= SERIAL_TXX9_CONSOLE,
 };
 
 int __init early_serial_txx9_setup(struct uart_port *port)
@@ -1257,6 +1261,7 @@ static int __init serial_txx9_init(void)
 
  	printk(KERN_INFO "%s version %s\n", serial_name, serial_version);
 
+	serial_txx9_reg.cons = SERIAL_TXX9_CONSOLE;
 	ret = uart_register_driver(&serial_txx9_reg);
 	if (ret)
 		goto out;

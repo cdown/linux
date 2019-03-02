@@ -1361,27 +1361,14 @@ static int __init sunsu_console_setup(struct console *co, char *options)
 	return 0;
 }
 
-static struct console sunsu_console = {
-	.name	=	"ttyS",
+static struct console_operations sunsu_cons_ops = {
 	.write	=	sunsu_console_write,
-	.device	=	uart_console_device,
+	.tty_dev	=	uart_console_device,
 	.setup	=	sunsu_console_setup,
-	.flags	=	CON_PRINTBUFFER,
-	.index	=	-1,
-	.data	=	&sunsu_reg,
 };
 
-/*
- *	Register console.
- */
-
-static inline struct console *SUNSU_CONSOLE(void)
-{
-	return &sunsu_console;
-}
 #else
-#define SUNSU_CONSOLE()			(NULL)
-#define sunsu_serial_console_init()	do { } while (0)
+static struct console_operations sunsu_cons_ops;
 #endif
 
 static enum su_type su_get_type(struct device_node *dp)
@@ -1501,9 +1488,15 @@ static int su_probe(struct platform_device *op)
 	    of_node_name_eq(dp, "lom-console"))
 		ignore_line = true;
 
-	sunserial_console_match(SUNSU_CONSOLE(), dp,
-				&sunsu_reg, up->port.line,
+#ifdef CONFIG_SERIAL_SUNSU_CONSOLE
+	err = uart_init_console_dfl(&sunsu_reg, &sunsu_cons_ops, "ttyS");
+	if (err)
+		goto out_unmap;
+#endif
+
+	sunserial_console_match(sunsu_reg.cons, dp, &sunsu_reg, up->port.line,
 				ignore_line);
+
 	err = uart_add_one_port(&sunsu_reg, &up->port);
 	if (err)
 		goto out_unmap;

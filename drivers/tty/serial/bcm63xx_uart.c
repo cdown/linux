@@ -746,19 +746,22 @@ static int bcm_console_setup(struct console *co, char *options)
 
 static struct uart_driver bcm_uart_driver;
 
-static struct console bcm63xx_console = {
-	.name		= "ttyS",
+static struct console_operations bcm63xx_cons_ops = {
 	.write		= bcm_console_write,
-	.device		= uart_console_device,
+	.tty_dev		= uart_console_device,
 	.setup		= bcm_console_setup,
-	.flags		= CON_PRINTBUFFER,
-	.index		= -1,
-	.data		= &bcm_uart_driver,
 };
+
+static struct console __initdata *bcm63xx_console;
 
 static int __init bcm63xx_console_init(void)
 {
-	register_console(&bcm63xx_console);
+	bcm63xx_console = init_console_dfl(&bcm63xx_cons_ops, "ttyS",
+					       &bcm_uart_driver);
+	if (!bcm63xx_console)
+		return -ENOMEM;
+
+	register_console(bcm63xx_console);
 	return 0;
 }
 
@@ -772,19 +775,23 @@ static void bcm_early_write(struct console *con, const char *s, unsigned n)
 	wait_for_xmitr(&dev->port);
 }
 
+static struct console_operations bcm63xx_early_ops = {
+	.write = bcm_early_write,
+};
+
 static int __init bcm_early_console_setup(struct earlycon_device *device,
 					  const char *opt)
 {
 	if (!device->port.membase)
 		return -ENODEV;
 
-	device->con->write = bcm_early_write;
+	device->con->ops = &bcm63xx_early_ops;
 	return 0;
 }
 
 OF_EARLYCON_DECLARE(bcm63xx_uart, "brcm,bcm6345-uart", bcm_early_console_setup);
 
-#define BCM63XX_CONSOLE	(&bcm63xx_console)
+#define BCM63XX_CONSOLE	(bcm63xx_console)
 #else
 #define BCM63XX_CONSOLE	NULL
 #endif /* CONFIG_SERIAL_BCM63XX_CONSOLE */
@@ -796,7 +803,6 @@ static struct uart_driver bcm_uart_driver = {
 	.major		= TTY_MAJOR,
 	.minor		= 64,
 	.nr		= BCM63XX_NR_UARTS,
-	.cons		= BCM63XX_CONSOLE,
 };
 
 /*
@@ -897,6 +903,7 @@ static int __init bcm_uart_init(void)
 {
 	int ret;
 
+	bcm_uart_driver.cons = BCM63XX_CONSOLE;
 	ret = uart_register_driver(&bcm_uart_driver);
 	if (ret)
 		return ret;

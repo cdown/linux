@@ -472,17 +472,11 @@ static int mps2_uart_console_setup(struct console *co, char *options)
 
 static struct uart_driver mps2_uart_driver;
 
-static struct console mps2_uart_console = {
-	.name = SERIAL_NAME,
-	.device = uart_console_device,
+static struct console_operations mps2_cons_ops = {
+	.tty_dev = uart_console_device,
 	.write = mps2_uart_console_write,
 	.setup = mps2_uart_console_setup,
-	.flags = CON_PRINTBUFFER,
-	.index = -1,
-	.data = &mps2_uart_driver,
 };
-
-#define MPS2_SERIAL_CONSOLE (&mps2_uart_console)
 
 static void mps2_early_putchar(struct uart_port *port, int ch)
 {
@@ -499,28 +493,30 @@ static void mps2_early_write(struct console *con, const char *s, unsigned int n)
 	uart_console_write(&dev->port, s, n, mps2_early_putchar);
 }
 
+static struct console_operations mps2_early_cons_ops = {
+	.write = mps2_early_write,
+};
+
 static int __init mps2_early_console_setup(struct earlycon_device *device,
 					   const char *opt)
 {
 	if (!device->port.membase)
 		return -ENODEV;
 
-	device->con->write = mps2_early_write;
-
+	device->con->ops = &mps2_early_cons_ops;
 	return 0;
 }
 
 OF_EARLYCON_DECLARE(mps2, "arm,mps2-uart", mps2_early_console_setup);
 
 #else
-#define MPS2_SERIAL_CONSOLE NULL
+static struct console_operations mps2_cons_ops;
 #endif
 
 static struct uart_driver mps2_uart_driver = {
 	.driver_name = DRIVER_NAME,
 	.dev_name = SERIAL_NAME,
 	.nr = MPS2_MAX_PORTS,
-	.cons = MPS2_SERIAL_CONSOLE,
 };
 
 static int mps2_of_get_port(struct platform_device *pdev,
@@ -642,14 +638,27 @@ static int __init mps2_uart_init(void)
 {
 	int ret;
 
-	ret = uart_register_driver(&mps2_uart_driver);
+#ifdef CONFIG_SERIAL_MPS2_UART_CONSOLE
+	ret = uart_init_console_dfl(&mps2_uart_driver, &mps2_cons_ops,
+					SERIAL_NAME);
 	if (ret)
 		return ret;
+#endif
+
+	ret = uart_register_driver(&mps2_uart_driver);
+	if (ret)
+		goto out;
 
 	ret = platform_driver_register(&mps2_serial_driver);
 	if (ret)
-		uart_unregister_driver(&mps2_uart_driver);
+		goto out_unregister;
 
+	return 0;
+
+out_unregister:
+	uart_unregister_driver(&mps2_uart_driver);
+out:
+	uart_put_console(&mps2_uart_driver);
 	return ret;
 }
 arch_initcall(mps2_uart_init);

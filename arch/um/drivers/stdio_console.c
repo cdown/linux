@@ -136,14 +136,14 @@ static int uml_console_setup(struct console *co, char *options)
 }
 
 /* No locking for register_console call - relies on single-threaded initcalls */
-static struct console stdiocons = {
-	.name		= "tty",
+
+static struct console_operations uml_cons_ops = {
 	.write		= uml_console_write,
-	.device		= uml_console_device,
+	.tty_dev		= uml_console_device,
 	.setup		= uml_console_setup,
-	.flags		= CON_PRINTBUFFER|CON_ANYTIME,
-	.index		= -1,
 };
+
+static struct console *stdiocons;
 
 static int stdio_init(void)
 {
@@ -151,10 +151,16 @@ static int stdio_init(void)
 	int err;
 	int i;
 
+	stdiocons = init_console_dfl(&uml_cons_ops, "tty", NULL);
+	if (!stdiocons)
+		return -ENOMEM;
+
+	stdiocons->flags |= CON_ANYTIME;
+
 	err = register_lines(&driver, &console_ops, vts,
 					ARRAY_SIZE(vts));
 	if (err)
-		return err;
+		goto out;
 
 	printk(KERN_INFO "Initialized stdio console driver\n");
 
@@ -175,8 +181,11 @@ static int stdio_init(void)
 	}
 
 	con_init_done = 1;
-	register_console(&stdiocons);
+	register_console(stdiocons);
 	return 0;
+out:
+	put_console(stdiocons);
+	return err;
 }
 late_initcall(stdio_init);
 
@@ -185,6 +194,7 @@ static void console_exit(void)
 	if (!con_init_done)
 		return;
 	close_lines(vts, ARRAY_SIZE(vts));
+	put_console(stdiocons);
 }
 __uml_exitcall(console_exit);
 

@@ -211,13 +211,16 @@ static struct tty_driver* iss_console_device(struct console *c, int *index)
 	return serial_driver;
 }
 
+static struct console_operations iss_ops = {
+	.write = iss_console_write,
+	.tty_dev = iss_console_device,
+};
 
 static struct console sercons = {
 	.name = "ttyS",
-	.write = iss_console_write,
-	.device = iss_console_device,
 	.flags = CON_PRINTBUFFER,
-	.index = -1
+	.ops = &iss_ops,
+	.index = -1,
 };
 
 static int __init iss_console_init(void)

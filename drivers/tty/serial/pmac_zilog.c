@@ -1805,17 +1805,15 @@ static int __exit pmz_detach(struct platform_device *pdev)
 static void pmz_console_write(struct console *con, const char *s, unsigned int count);
 static int __init pmz_console_setup(struct console *co, char *options);
 
-static struct console pmz_console = {
-	.name	=	PMACZILOG_NAME,
+static struct console_operations pmz_cons_ops = {
 	.write	=	pmz_console_write,
-	.device	=	uart_console_device,
+	.tty_dev	=	uart_console_device,
 	.setup	=	pmz_console_setup,
-	.flags	=	CON_PRINTBUFFER,
-	.index	=	-1,
-	.data   =	&pmz_uart_reg,
 };
 
-#define PMACZILOG_CONSOLE	&pmz_console
+static struct console __initdata *pmz_console;
+
+#define PMACZILOG_CONSOLE	(pmz_console)
 #else /* CONFIG_SERIAL_PMACZILOG_CONSOLE */
 #define PMACZILOG_CONSOLE	(NULL)
 #endif /* CONFIG_SERIAL_PMACZILOG_CONSOLE */
@@ -2048,12 +2046,15 @@ static int __init pmz_console_init(void)
 	if (pmz_ports_count == 0)
 		return -ENODEV;
 
+	pmz_console = init_console_dfl(&pmz_cons_ops, PMACZILOG_NAME,
+					   &pmz_uart_reg);
+	if (!pmz_console)
+		return -ENOMEM;
+
 	/* TODO: Autoprobe console based on OF */
 	/* pmz_console.index = i; */
-	register_console(&pmz_console);
-
+	register_console(pmz_console);
 	return 0;
-
 }
 console_initcall(pmz_console_init);
 #endif /* CONFIG_SERIAL_PMACZILOG_CONSOLE */

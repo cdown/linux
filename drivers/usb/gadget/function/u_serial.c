@@ -83,7 +83,7 @@
 
 /* console info */
 struct gs_console {
-	struct console		console;
+	struct console		*console;
 	struct work_struct	work;
 	spinlock_t		lock;
 	struct usb_request	*req;
@@ -897,7 +897,7 @@ static void __gs_console_push(struct gs_console *cons)
 	if (req->length)
 		return;	/* busy */
 
-	ep = cons->console.data;
+	ep = cons->console->data;
 	size = kfifo_out(&cons->buf, req->buf, ep->maxpacket);
 	if (!size)
 		return;
@@ -971,7 +971,7 @@ static int gs_console_connect(struct gs_port *port)
 
 	spin_lock(&cons->lock);
 	cons->req = req;
-	cons->console.data = ep;
+	cons->console->data = ep;
 	spin_unlock(&cons->lock);
 
 	pr_debug("ttyGS%d: console connected!\n", port->port_num);
@@ -993,7 +993,7 @@ static void gs_console_disconnect(struct gs_port *port)
 	spin_lock(&cons->lock);
 
 	req = cons->req;
-	ep = cons->console.data;
+	ep = cons->console->data;
 	cons->req = NULL;
 
 	spin_unlock(&cons->lock);
@@ -1004,6 +1004,11 @@ static void gs_console_disconnect(struct gs_port *port)
 	usb_ep_dequeue(ep, req);
 	gs_free_req(ep, req);
 }
+
+static struct console_operations gserial_cons_ops = {
+	.write = gs_console_write,
+	.tty_dev = gs_console_device,
+};
 
 static int gs_console_init(struct gs_port *port)
 {
@@ -1017,11 +1022,11 @@ static int gs_console_init(struct gs_port *port)
 	if (!cons)
 		return -ENOMEM;
 
-	strcpy(cons->console.name, "ttyGS");
-	cons->console.write = gs_console_write;
-	cons->console.device = gs_console_device;
-	cons->console.flags = CON_PRINTBUFFER;
-	cons->console.index = port->port_num;
+	cons->console = init_console_dfl(&gserial_cons_ops, "ttyGS", NULL);
+	if (!cons->console)
+		goto oom_free_gscon;
+
+	cons->console->index = port->port_num;
 
 	INIT_WORK(&cons->work, gs_console_work);
 	spin_lock_init(&cons->lock);
@@ -1029,8 +1034,7 @@ static int gs_console_init(struct gs_port *port)
 	err = kfifo_alloc(&cons->buf, GS_CONSOLE_BUF_SIZE, GFP_KERNEL);
 	if (err) {
 		pr_err("ttyGS%d: allocate console buffer failed\n", port->port_num);
-		kfree(cons);
-		return err;
+		goto oom_free_gscon;
 	}
 
 	port->console = cons;
@@ -1042,6 +1046,10 @@ static int gs_console_init(struct gs_port *port)
 	spin_unlock_irq(&port->port_lock);
 
 	return 0;
+
+oom_free_gscon:
+	kfree(cons);
+	return -ENOMEM;
 }
 
 static void gs_console_exit(struct gs_port *port)

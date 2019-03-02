@@ -2139,21 +2139,16 @@ imx_uart_console_exit(struct console *co)
 }
 
 static struct uart_driver imx_uart_uart_driver;
-static struct console imx_uart_console = {
-	.name		= DEV_NAME,
+
+static struct console_operations imx_cons_ops = {
 	.write		= imx_uart_console_write,
-	.device		= uart_console_device,
+	.tty_dev		= uart_console_device,
 	.setup		= imx_uart_console_setup,
 	.exit		= imx_uart_console_exit,
-	.flags		= CON_PRINTBUFFER,
-	.index		= -1,
-	.data		= &imx_uart_uart_driver,
 };
 
-#define IMX_CONSOLE	&imx_uart_console
-
 #else
-#define IMX_CONSOLE	NULL
+static struct console_operations imx_cons_ops;
 #endif
 
 static struct uart_driver imx_uart_uart_driver = {
@@ -2163,7 +2158,6 @@ static struct uart_driver imx_uart_uart_driver = {
 	.major          = SERIAL_IMX_MAJOR,
 	.minor          = MINOR_START,
 	.nr             = ARRAY_SIZE(imx_uart_ports),
-	.cons           = IMX_CONSOLE,
 };
 
 static enum hrtimer_restart imx_trigger_start_tx(struct hrtimer *t)
@@ -2602,15 +2596,29 @@ static struct platform_driver imx_uart_platform_driver = {
 
 static int __init imx_uart_init(void)
 {
-	int ret = uart_register_driver(&imx_uart_uart_driver);
+	int ret;
 
+#ifdef CONFIG_SERIAL_IMX_CONSOLE
+	ret = uart_init_console_dfl(&imx_uart_uart_driver, &imx_cons_ops,
+					DEV_NAME);
 	if (ret)
 		return ret;
+#endif
+
+	ret = uart_register_driver(&imx_uart_uart_driver);
+	if (ret)
+		goto out;
 
 	ret = platform_driver_register(&imx_uart_platform_driver);
 	if (ret != 0)
-		uart_unregister_driver(&imx_uart_uart_driver);
+		goto out_unregister;
 
+	return 0;
+
+out_unregister:
+	uart_unregister_driver(&imx_uart_uart_driver);
+out:
+	uart_put_console(&imx_uart_uart_driver);
 	return ret;
 }
 

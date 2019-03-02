@@ -30,11 +30,15 @@ static void early_console_write(struct console *con, const char *s, unsigned n)
 	early_write(s, n);
 }
 
+static struct console_operations early_console_ops = {
+	.write =	early_console_write,
+};
+
 static struct console early_console_dev = {
 	.name =		"earlycon",
-	.write =	early_console_write,
 	.flags =	CON_PRINTBUFFER | CON_BOOT,
 	.index =	-1,
+	.ops =		&early_console_ops,
 };
 
 static int __init setup_early_printk(char *buf)
