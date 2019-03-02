@@ -1711,13 +1711,17 @@ msm_serial_early_write(struct console *con, const char *s, unsigned n)
 	__msm_console_write(&dev->port, s, n, false);
 }
 
+static struct console_operations msm_early_cons_ops = {
+	.write = msm_serial_early_write,
+};
+
 static int __init
 msm_serial_early_console_setup(struct earlycon_device *device, const char *opt)
 {
 	if (!device->port.membase)
 		return -ENODEV;
 
-	device->con->write = msm_serial_early_write;
+	device->con->ops = &msm_early_cons_ops;
 	return 0;
 }
 OF_EARLYCON_DECLARE(msm_serial, "qcom,msm-uart",
@@ -1731,6 +1735,10 @@ msm_serial_early_write_dm(struct console *con, const char *s, unsigned n)
 	__msm_console_write(&dev->port, s, n, true);
 }
 
+static struct console_operations msm_dm_early_cons_ops = {
+	.write = msm_serial_early_write_dm,
+};
+
 static int __init
 msm_serial_early_console_setup_dm(struct earlycon_device *device,
 				  const char *opt)
@@ -1738,7 +1746,7 @@ msm_serial_early_console_setup_dm(struct earlycon_device *device,
 	if (!device->port.membase)
 		return -ENODEV;
 
-	device->con->write = msm_serial_early_write_dm;
+	device->con->ops = &msm_dm_early_cons_ops;
 	return 0;
 }
 OF_EARLYCON_DECLARE(msm_serial_dm, "qcom,msm-uartdm",
@@ -1746,20 +1754,14 @@ OF_EARLYCON_DECLARE(msm_serial_dm, "qcom,msm-uartdm",
 
 static struct uart_driver msm_uart_driver;
 
-static struct console msm_console = {
-	.name = "ttyMSM",
+static struct console_operations msm_cons_ops = {
 	.write = msm_console_write,
-	.device = uart_console_device,
+	.tty_dev = uart_console_device,
 	.setup = msm_console_setup,
-	.flags = CON_PRINTBUFFER,
-	.index = -1,
-	.data = &msm_uart_driver,
 };
 
-#define MSM_CONSOLE	(&msm_console)
-
 #else
-#define MSM_CONSOLE	NULL
+static struct console_operations msm_cons_ops;
 #endif
 
 static struct uart_driver msm_uart_driver = {
@@ -1767,7 +1769,6 @@ static struct uart_driver msm_uart_driver = {
 	.driver_name = "msm_serial",
 	.dev_name = "ttyMSM",
 	.nr = UART_NR,
-	.cons = MSM_CONSOLE,
 };
 
 static atomic_t msm_uart_next_id = ATOMIC_INIT(0);
@@ -1892,16 +1893,26 @@ static int __init msm_serial_init(void)
 {
 	int ret;
 
-	ret = uart_register_driver(&msm_uart_driver);
+#ifdef CONFIG_SERIAL_MSM_CONSOLE
+	ret = uart_init_console_dfl(&msm_uart_driver, &msm_cons_ops, "ttyMSM");
 	if (unlikely(ret))
 		return ret;
+#endif
+
+	ret = uart_register_driver(&msm_uart_driver);
+	if (unlikely(ret))
+		goto err_put;
 
 	ret = platform_driver_register(&msm_platform_driver);
 	if (unlikely(ret))
-		uart_unregister_driver(&msm_uart_driver);
+		goto err_unregister;
 
 	pr_info("msm_serial: driver initialized\n");
 
+err_unregister:
+	uart_unregister_driver(&msm_uart_driver);
+err_put:
+	uart_put_console(&msm_uart_driver);
 	return ret;
 }
 

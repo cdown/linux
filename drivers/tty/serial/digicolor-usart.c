@@ -431,19 +431,16 @@ static int digicolor_uart_console_setup(struct console *co, char *options)
 	return uart_set_options(port, co, baud, parity, bits, flow);
 }
 
-static struct console digicolor_console = {
-	.name	= "ttyS",
-	.device	= uart_console_device,
-	.write	= digicolor_uart_console_write,
-	.setup	= digicolor_uart_console_setup,
-	.flags	= CON_PRINTBUFFER,
-	.index	= -1,
-};
-
 static struct uart_driver digicolor_uart = {
 	.driver_name	= "digicolor-usart",
 	.dev_name	= "ttyS",
 	.nr		= DIGICOLOR_USART_NR,
+};
+
+static struct console_operations digicolor_cons_ops = {
+	.tty_dev	= uart_console_device,
+	.write	= digicolor_uart_console_write,
+	.setup	= digicolor_uart_console_setup,
 };
 
 static int digicolor_uart_probe(struct platform_device *pdev)
@@ -532,10 +529,12 @@ static int __init digicolor_uart_init(void)
 {
 	int ret;
 
-	if (IS_ENABLED(CONFIG_SERIAL_CONEXANT_DIGICOLOR_CONSOLE)) {
-		digicolor_uart.cons = &digicolor_console;
-		digicolor_console.data = &digicolor_uart;
-	}
+#ifdef CONFIG_SERIAL_CONEXANT_DIGICOLOR_CONSOLE
+	ret = uart_init_console_dfl(&digicolor_uart, &digicolor_cons_ops,
+					"ttyS");
+	if (ret)
+		return ret;
+#endif
 
 	ret = uart_register_driver(&digicolor_uart);
 	if (ret)

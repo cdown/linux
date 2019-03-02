@@ -587,19 +587,23 @@ static int meson_serial_console_setup(struct console *co, char *options)
 	return uart_set_options(port, co, baud, parity, bits, flow);
 }
 
-static struct console meson_serial_console = {
-	.name		= AML_UART_DEV_NAME,
+static struct console_operations meson_cons_ops = {
 	.write		= meson_serial_console_write,
-	.device		= uart_console_device,
+	.tty_dev		= uart_console_device,
 	.setup		= meson_serial_console_setup,
-	.flags		= CON_PRINTBUFFER,
-	.index		= -1,
-	.data		= &meson_uart_driver,
 };
+
+static struct console __initdata *meson_serial_console;
 
 static int __init meson_serial_console_init(void)
 {
-	register_console(&meson_serial_console);
+	meson_serial_console = init_console_dfl(&meson_cons_ops,
+						    AML_UART_DEV_NAME,
+						    &meson_uart_driver);
+	if (!meson_serial_console)
+		return -ENOMEM;
+
+	register_console(meson_serial_console);
 	return 0;
 }
 
@@ -612,6 +616,10 @@ static void meson_serial_early_console_write(struct console *co,
 	meson_serial_port_write(&dev->port, s, count);
 }
 
+static struct console_operations meson_early_cons_ops = {
+	.write = meson_serial_early_console_write,
+};
+
 static int __init
 meson_serial_early_console_setup(struct earlycon_device *device, const char *opt)
 {
@@ -619,14 +627,14 @@ meson_serial_early_console_setup(struct earlycon_device *device, const char *opt
 		return -ENODEV;
 
 	meson_uart_enable_tx_engine(&device->port);
-	device->con->write = meson_serial_early_console_write;
+	device->con->ops = &meson_early_cons_ops;
 	return 0;
 }
 
 OF_EARLYCON_DECLARE(meson, "amlogic,meson-ao-uart",
 		    meson_serial_early_console_setup);
 
-#define MESON_SERIAL_CONSOLE	(&meson_serial_console)
+#define MESON_SERIAL_CONSOLE	(meson_serial_console)
 #else
 static int __init meson_serial_console_init(void) {
 	return 0;
@@ -639,7 +647,6 @@ static struct uart_driver meson_uart_driver = {
 	.driver_name	= "meson_uart",
 	.dev_name	= AML_UART_DEV_NAME,
 	.nr		= AML_UART_PORT_NUM,
-	.cons		= MESON_SERIAL_CONSOLE,
 };
 
 static inline struct clk *meson_uart_probe_clock(struct device *dev,
@@ -802,7 +809,8 @@ static int __init meson_uart_init(void)
 	ret = meson_serial_console_init();
 	if (ret)
 		return ret;
-	
+
+	meson_uart_driver.cons = MESON_SERIAL_CONSOLE;
 	ret = uart_register_driver(&meson_uart_driver);
 	if (ret)
 		return ret;
