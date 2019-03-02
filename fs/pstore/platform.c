@@ -504,10 +504,17 @@ static void pstore_console_write(struct console *con, const char *s, unsigned c)
 	psinfo->write(&record);
 }
 
-static struct console pstore_console = {
-	.write	= pstore_console_write,
-	.index	= -1,
+static struct console_operations pstore_cons_ops = {
+	.write = pstore_console_write,
 };
+
+static struct console *pstore_console;
+
+static int pstore_init_console(void)
+{
+	pstore_console = init_console_dfl(&pstore_cons_ops, "pstore", NULL);
+	return pstore_console ? 0 : -ENOMEM;
+}
 
 static void pstore_register_console(void)
 {
@@ -518,15 +525,17 @@ static void pstore_register_console(void)
 	 * Always initialize flags here since prior unregister_console()
 	 * calls may have changed settings (specifically CON_ENABLED).
 	 */
-	pstore_console.flags = CON_PRINTBUFFER | CON_ENABLED | CON_ANYTIME;
-	register_console(&pstore_console);
+	pstore_console->flags = CON_PRINTBUFFER | CON_ENABLED | CON_ANYTIME;
+	register_console(pstore_console);
 }
 
 static void pstore_unregister_console(void)
 {
-	unregister_console(&pstore_console);
+	unregister_console(pstore_console);
+	put_console(pstore_console);
 }
 #else
+static int pstore_init_console(void) { return 0; }
 static void pstore_register_console(void) {}
 static void pstore_unregister_console(void) {}
 #endif
@@ -595,6 +604,9 @@ int pstore_register(struct pstore_info *psi)
 	psinfo = psi;
 	mutex_init(&psinfo->read_mutex);
 	sema_init(&psinfo->buf_lock, 1);
+
+	if (pstore_init_console())
+		return -ENOMEM;
 
 	if (psi->flags & PSTORE_FLAGS_DMESG)
 		allocate_buf_for_compression();

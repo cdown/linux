@@ -101,10 +101,6 @@ struct arc_uart_port {
 
 static struct arc_uart_port arc_uart_ports[CONFIG_SERIAL_ARC_NR_PORTS];
 
-#ifdef CONFIG_SERIAL_ARC_CONSOLE
-static struct console arc_console;
-#endif
-
 #define DRIVER_NAME	"arc-uart"
 
 static struct uart_driver arc_uart_driver = {
@@ -114,9 +110,6 @@ static struct uart_driver arc_uart_driver = {
 	.major		= 0,
 	.minor		= 0,
 	.nr		= CONFIG_SERIAL_ARC_NR_PORTS,
-#ifdef CONFIG_SERIAL_ARC_CONSOLE
-	.cons		= &arc_console,
-#endif
 };
 
 static void arc_serial_stop_rx(struct uart_port *port)
@@ -530,14 +523,10 @@ static void arc_serial_console_write(struct console *co, const char *s,
 	spin_unlock_irqrestore(&port->lock, flags);
 }
 
-static struct console arc_console = {
-	.name	= ARC_SERIAL_DEV_NAME,
+static struct console_operations arc_cons_ops = {
 	.write	= arc_serial_console_write,
-	.device	= uart_console_device,
+	.tty_dev	= uart_console_device,
 	.setup	= arc_serial_console_setup,
-	.flags	= CON_PRINTBUFFER,
-	.index	= -1,
-	.data	= &arc_uart_driver
 };
 
 static void arc_early_serial_write(struct console *con, const char *s,
@@ -547,6 +536,10 @@ static void arc_early_serial_write(struct console *con, const char *s,
 
 	uart_console_write(&dev->port, s, n, arc_serial_console_putchar);
 }
+
+static struct console_operations arc_early_cons_ops = {
+	.write = arc_early_serial_write,
+};
 
 static int __init arc_early_console_setup(struct earlycon_device *dev,
 					  const char *opt)
@@ -564,11 +557,13 @@ static int __init arc_early_console_setup(struct earlycon_device *dev,
 	UART_SET_BAUDL(port, l);
 	UART_SET_BAUDH(port, h);
 
-	dev->con->write = arc_early_serial_write;
+	dev->con->ops = &arc_early_cons_ops;
 	return 0;
 }
 OF_EARLYCON_DECLARE(arc_uart, "snps,arc-uart", arc_early_console_setup);
 
+#else
+static struct console_operations arc_cons_ops;
 #endif	/* CONFIG_SERIAL_ARC_CONSOLE */
 
 static int arc_serial_probe(struct platform_device *pdev)
@@ -656,6 +651,13 @@ static struct platform_driver arc_platform_driver = {
 static int __init arc_serial_init(void)
 {
 	int ret;
+
+#ifdef CONFIG_SERIAL_ARC_CONSOLE
+	ret = uart_init_console_dfl(&arc_uart_driver, &arc_cons_ops,
+					ARC_SERIAL_DEV_NAME);
+	if (ret)
+		return ret;
+#endif
 
 	ret = uart_register_driver(&arc_uart_driver);
 	if (ret)

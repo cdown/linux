@@ -32,13 +32,17 @@ static void imx_uart_console_early_write(struct console *con, const char *s,
 	uart_console_write(&dev->port, s, count, imx_uart_console_early_putchar);
 }
 
+static struct console_operations imx_early_cons_ops = {
+	.write = imx_uart_console_early_write,
+};
+
 static int __init
 imx_console_early_setup(struct earlycon_device *dev, const char *opt)
 {
 	if (!dev->port.membase)
 		return -ENODEV;
 
-	dev->con->write = imx_uart_console_early_write;
+	dev->con->ops = &imx_early_cons_ops;
 
 	return 0;
 }

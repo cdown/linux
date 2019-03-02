@@ -290,7 +290,7 @@ static unsigned int mips_ejtag_fdc_decode(u32 word, char *buf)
  * @regs:		Registers base address for each CPU.
  */
 struct mips_ejtag_fdc_console {
-	struct console		 cons;
+	struct console		*cons;
 	struct tty_driver	*tty_drv;
 	raw_spinlock_t		 lock;
 	bool			 initialised;
@@ -301,8 +301,7 @@ struct mips_ejtag_fdc_console {
 static void mips_ejtag_fdc_console_write(struct console *c, const char *s,
 					 unsigned int count)
 {
-	struct mips_ejtag_fdc_console *cons =
-		container_of(c, struct mips_ejtag_fdc_console, cons);
+	struct mips_ejtag_fdc_console *cons = c->data;
 	void __iomem *regs;
 	struct fdc_word word;
 	unsigned long flags;
@@ -356,12 +355,16 @@ out:
 static struct tty_driver *mips_ejtag_fdc_console_device(struct console *c,
 							int *index)
 {
-	struct mips_ejtag_fdc_console *cons =
-		container_of(c, struct mips_ejtag_fdc_console, cons);
+	struct mips_ejtag_fdc_console *cons = c->data;
 
 	*index = c->index;
 	return cons->tty_drv;
 }
+
+static struct console_operations fdc_cons_ops = {
+	.write	= mips_ejtag_fdc_console_write,
+	.tty_dev	= mips_ejtag_fdc_console_device,
+};
 
 /* Initialise an FDC console (early or normal */
 static int __init mips_ejtag_fdc_console_init(struct mips_ejtag_fdc_console *c)
@@ -383,20 +386,13 @@ static int __init mips_ejtag_fdc_console_init(struct mips_ejtag_fdc_console *c)
 
 	c->initialised = true;
 	c->regs[smp_processor_id()] = regs;
-	register_console(&c->cons);
+	register_console(c->cons);
 out:
 	raw_spin_unlock_irqrestore(&c->lock, flags);
 	return ret;
 }
 
 static struct mips_ejtag_fdc_console mips_ejtag_fdc_con = {
-	.cons	= {
-		.name	= "fdc",
-		.write	= mips_ejtag_fdc_console_write,
-		.device	= mips_ejtag_fdc_console_device,
-		.flags	= CON_PRINTBUFFER,
-		.index	= -1,
-	},
 	.lock	= __RAW_SPIN_LOCK_UNLOCKED(mips_ejtag_fdc_con.lock),
 };
 
@@ -591,7 +587,7 @@ static void mips_ejtag_fdc_handle(struct mips_ejtag_fdc_tty *priv)
 			}
 #endif
 			/* Support Ctrl+O for console channel */
-			if (channel == mips_ejtag_fdc_con.cons.index) {
+			if (channel == mips_ejtag_fdc_con.cons->index) {
 				if (buf[i] == '\x0f') {	/* ^O */
 					priv->sysrq_pressed =
 						!priv->sysrq_pressed;
@@ -1124,18 +1120,25 @@ builtin_mips_cdmm_driver(mips_ejtag_fdc_tty_driver);
 
 static int __init mips_ejtag_fdc_init_console(void)
 {
+	mips_ejtag_fdc_con.cons = init_console_dfl(&fdc_cons_ops, "fdc", c);
 	return mips_ejtag_fdc_console_init(&mips_ejtag_fdc_con);
 }
 console_initcall(mips_ejtag_fdc_init_console);
 
 #ifdef CONFIG_MIPS_EJTAG_FDC_EARLYCON
+static struct console_operations early_fdc_cons_ops = {
+	.write  = mips_ejtag_fdc_console_write,
+};
+
+static struct console early_fdc_console = {
+	.name	= "early_fdc",
+	.ops	= &early_fdc_cons_ops,
+	.flags	= CON_PRINTBUFFER | CON_BOOT,
+	.index	= CONSOLE_CHANNEL,
+};
+
 static struct mips_ejtag_fdc_console mips_ejtag_fdc_earlycon = {
-	.cons	= {
-		.name	= "early_fdc",
-		.write	= mips_ejtag_fdc_console_write,
-		.flags	= CON_PRINTBUFFER | CON_BOOT,
-		.index	= CONSOLE_CHANNEL,
-	},
+	.cons	= &early_fdc_console,
 	.lock	= __RAW_SPIN_LOCK_UNLOCKED(mips_ejtag_fdc_earlycon.lock),
 };
 

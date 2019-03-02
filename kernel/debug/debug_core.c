@@ -934,10 +934,14 @@ static void kgdb_console_write(struct console *co, const char *s,
 	local_irq_restore(flags);
 }
 
+static struct console_operations kgdb_ops = {
+	.write		= kgdb_console_write,
+};
+
 static struct console kgdbcons = {
 	.name		= "kgdb",
-	.write		= kgdb_console_write,
 	.flags		= CON_PRINTBUFFER | CON_ENABLED,
+	.ops		= &kgdb_ops,
 	.index		= -1,
 };
 

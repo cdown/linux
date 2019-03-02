@@ -87,6 +87,10 @@ static void __init ingenic_early_console_setup_clock(struct earlycon_device *dev
 	dev->port.uartclk = be32_to_cpup(prop);
 }
 
+static struct console_operations ingenic_early_cons_ops = {
+	.write = ingenic_early_console_write,
+};
+
 static int __init ingenic_early_console_setup(struct earlycon_device *dev,
 					      const char *opt)
 {
@@ -124,7 +128,7 @@ static int __init ingenic_early_console_setup(struct earlycon_device *dev,
 	early_out(port, UART_LCR, UART_LCR_WLEN8);
 
 	early_device = dev;
-	dev->con->write = ingenic_early_console_write;
+	dev->con->ops = &ingenic_early_cons_ops;
 
 	return 0;
 }
