@@ -1216,6 +1216,10 @@ static void early_omap_serial_write(struct console *console, const char *s,
 	uart_console_write(port, s, count, omap_serial_early_putc);
 }
 
+static struct console_operations omap_early_cons_ops = {
+	.write = early_omap_serial_write,
+};
+
 static int __init early_omap_serial_setup(struct earlycon_device *device,
 					  const char *options)
 {
@@ -1225,7 +1229,7 @@ static int __init early_omap_serial_setup(struct earlycon_device *device,
 		return -ENODEV;
 
 	port->regshift = 2;
-	device->con->write = early_omap_serial_write;
+	device->con->ops = &omap_early_cons_ops;
 	return 0;
 }
 
@@ -1311,14 +1315,10 @@ serial_omap_console_setup(struct console *co, char *options)
 	return uart_set_options(&up->port, co, baud, parity, bits, flow);
 }
 
-static struct console serial_omap_console = {
-	.name		= OMAP_SERIAL_NAME,
+static struct console_operations omap_cons_ops = {
 	.write		= serial_omap_console_write,
-	.device		= uart_console_device,
+	.tty_dev		= uart_console_device,
 	.setup		= serial_omap_console_setup,
-	.flags		= CON_PRINTBUFFER,
-	.index		= -1,
-	.data		= &serial_omap_reg,
 };
 
 static void serial_omap_add_console_port(struct uart_omap_port *up)
@@ -1326,15 +1326,9 @@ static void serial_omap_add_console_port(struct uart_omap_port *up)
 	serial_omap_console_ports[up->port.line] = up;
 }
 
-#define OMAP_CONSOLE	(&serial_omap_console)
-
 #else
-
-#define OMAP_CONSOLE	NULL
-
-static inline void serial_omap_add_console_port(struct uart_omap_port *up)
-{}
-
+static struct console_operations omap_cons_ops;
+static inline void serial_omap_add_console_port(struct uart_omap_port *up) {}
 #endif
 
 /* Enable or disable the rs485 support */
@@ -1412,7 +1406,6 @@ static struct uart_driver serial_omap_reg = {
 	.driver_name	= "OMAP-SERIAL",
 	.dev_name	= OMAP_SERIAL_NAME,
 	.nr		= OMAP_MAX_HSUART_PORTS,
-	.cons		= OMAP_CONSOLE,
 };
 
 #ifdef CONFIG_PM_SLEEP
@@ -1862,12 +1855,27 @@ static int __init serial_omap_init(void)
 {
 	int ret;
 
+#ifdef CONFIG_SERIAL_OMAP_CONSOLE
+	ret = uart_init_console_dfl(&serial_omap_reg, &omap_cons_ops,
+					OMAP_SERIAL_NAME);
+	if (ret)
+		return ret;
+#endif
+
 	ret = uart_register_driver(&serial_omap_reg);
 	if (ret != 0)
-		return ret;
+		goto out;
+
 	ret = platform_driver_register(&serial_omap_driver);
 	if (ret != 0)
-		uart_unregister_driver(&serial_omap_reg);
+		goto out_unregister;
+
+	return 0;
+
+out_unregister:
+	uart_unregister_driver(&serial_omap_reg);
+out:
+	uart_put_console(&serial_omap_reg);
 	return ret;
 }
 

@@ -1695,19 +1695,14 @@ static int __init pch_console_setup(struct console *co, char *options)
 
 static struct uart_driver pch_uart_driver;
 
-static struct console pch_console = {
-	.name		= PCH_UART_DRIVER_DEVICE,
+static struct console_operations pch_cons_ops = {
 	.write		= pch_console_write,
-	.device		= uart_console_device,
+	.tty_dev		= uart_console_device,
 	.setup		= pch_console_setup,
-	.flags		= CON_PRINTBUFFER | CON_ANYTIME,
-	.index		= -1,
-	.data		= &pch_uart_driver,
 };
 
-#define PCH_CONSOLE	(&pch_console)
 #else
-#define PCH_CONSOLE	NULL
+static struct console_operations pch_cons_ops;
 #endif	/* CONFIG_SERIAL_PCH_UART_CONSOLE */
 
 static struct uart_driver pch_uart_driver = {
@@ -1717,7 +1712,6 @@ static struct uart_driver pch_uart_driver = {
 	.major = 0,
 	.minor = 0,
 	.nr = PCH_UART_NR,
-	.cons = PCH_CONSOLE,
 };
 
 static struct eg20t_port *pch_uart_init_port(struct pci_dev *pdev,
@@ -1936,16 +1930,29 @@ static int __init pch_uart_module_init(void)
 {
 	int ret;
 
+#ifdef CONFIG_SERIAL_PCH_UART_CONSOLE
+	ret = uart_init_console_dfl(&pch_uart_driver, &pch_cons_ops,
+					PCH_UART_DRIVER_DEVICE);
+	if (ret)
+		return ret;
+#endif
+
 	/* register as UART driver */
 	ret = uart_register_driver(&pch_uart_driver);
 	if (ret < 0)
-		return ret;
+		goto out;
 
 	/* register as PCI driver */
 	ret = pci_register_driver(&pch_uart_pci_driver);
 	if (ret < 0)
-		uart_unregister_driver(&pch_uart_driver);
+		goto out_unregister;
 
+	return 0;
+
+out_unregister:
+	uart_unregister_driver(&pch_uart_driver);
+out:
+	uart_put_console(&pch_uart_driver);
 	return ret;
 }
 module_init(pch_uart_module_init);

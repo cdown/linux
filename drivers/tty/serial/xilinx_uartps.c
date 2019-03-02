@@ -1188,7 +1188,7 @@ static int __init cdns_early_console_setup(struct earlycon_device *device,
 		writel(bdiv, port->membase + CDNS_UART_BAUDDIV);
 	}
 
-	device->con->write = cdns_early_write;
+	device->con->ops->write = cdns_early_write;
 
 	return 0;
 }
@@ -1282,15 +1282,13 @@ static int cdns_uart_console_setup(struct console *co, char *options)
 	return uart_set_options(port, co, baud, parity, bits, flow);
 }
 
-static struct console cdns_uart_console = {
-	.name	= CDNS_UART_TTY_NAME,
+static struct console_operations cdns_uart_console_ops = {
 	.write	= cdns_uart_console_write,
-	.device	= uart_console_device,
+	.tty_dev	= uart_console_device,
 	.setup	= cdns_uart_console_setup,
-	.flags	= CON_PRINTBUFFER,
-	.index	= -1, /* Specified on the cmdline (e.g. console=ttyPS ) */
-	.data	= &cdns_uart_uart_driver,
 };
+#else
+static struct console_operations cdns_uart_console_ops;
 #endif /* CONFIG_SERIAL_XILINX_PS_UART_CONSOLE */
 
 #ifdef CONFIG_PM_SLEEP
@@ -1465,13 +1463,17 @@ static int cdns_uart_probe(struct platform_device *pdev)
 		cdns_uart_uart_driver.minor = CDNS_UART_MINOR;
 		cdns_uart_uart_driver.nr = CDNS_UART_NR_PORTS;
 #ifdef CONFIG_SERIAL_XILINX_PS_UART_CONSOLE
-		cdns_uart_uart_driver.cons = &cdns_uart_console;
+		rc = uart_init_console_dfl(&cdns_uart_uart_driver,
+					       &cdns_uart_console_ops,
+					       CDNS_UART_TTY_NAME);
+		if (rc < 0)
+			return rc;
 #endif
 
 		rc = uart_register_driver(&cdns_uart_uart_driver);
 		if (rc < 0) {
 			dev_err(&pdev->dev, "Failed to register driver\n");
-			return rc;
+			goto err_out_unregister_console;
 		}
 	}
 
@@ -1582,7 +1584,7 @@ static int cdns_uart_probe(struct platform_device *pdev)
 	 * is cleanup.
 	 */
 	if (!console_port) {
-		cdns_uart_console.index = id;
+		cdns_uart_uart_driver.cons->index = id;
 		console_port = port;
 	}
 #endif
@@ -1599,7 +1601,7 @@ static int cdns_uart_probe(struct platform_device *pdev)
 	if (console_port == port &&
 	    !(cdns_uart_uart_driver.cons->flags & CON_ENABLED)) {
 		console_port = NULL;
-		cdns_uart_console.index = -1;
+		cdns_uart_uart_driver.cons->index = -1;
 	}
 #endif
 
@@ -1625,6 +1627,9 @@ err_out_clk_dis_pclk:
 err_out_unregister_driver:
 	if (!instances)
 		uart_unregister_driver(cdns_uart_data->cdns_uart_driver);
+err_out_unregister_console:
+	uart_put_console(&cdns_uart_uart_driver);
+
 	return rc;
 }
 

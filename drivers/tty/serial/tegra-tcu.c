@@ -23,7 +23,7 @@
 struct tegra_tcu {
 	struct uart_driver driver;
 #if IS_ENABLED(CONFIG_SERIAL_TEGRA_TCU_CONSOLE)
-	struct console console;
+	struct console *console;
 #endif
 	struct uart_port port;
 
@@ -147,7 +147,9 @@ static const struct uart_ops tegra_tcu_uart_ops = {
 static void tegra_tcu_console_write(struct console *cons, const char *s,
 				    unsigned int count)
 {
-	struct tegra_tcu *tcu = container_of(cons, struct tegra_tcu, console);
+	struct tegra_tcu *tcu = container_of(cons->data,
+					     struct tegra_tcu,
+					     driver);
 
 	tegra_tcu_write(tcu, s, count);
 }
@@ -156,6 +158,12 @@ static int tegra_tcu_console_setup(struct console *cons, char *options)
 {
 	return 0;
 }
+
+static struct console_operations tegra_tcu_console_ops = {
+	.write = tegra_tcu_console_write,
+	.setup = tegra_tcu_console_setup,
+	.tty_dev = uart_console_device,
+};
 #endif
 
 static void tegra_tcu_receive(struct mbox_client *cl, void *msg)
@@ -197,13 +205,10 @@ static int tegra_tcu_probe(struct platform_device *pdev)
 
 #if IS_ENABLED(CONFIG_SERIAL_TEGRA_TCU_CONSOLE)
 	/* setup the console */
-	strcpy(tcu->console.name, "ttyTCU");
-	tcu->console.device = uart_console_device;
-	tcu->console.flags = CON_PRINTBUFFER | CON_ANYTIME;
-	tcu->console.index = -1;
-	tcu->console.write = tegra_tcu_console_write;
-	tcu->console.setup = tegra_tcu_console_setup;
-	tcu->console.data = &tcu->driver;
+	tcu->console = init_console_dfl(&tegra_tcu_console_ops,
+					    "ttyTCU",
+					    &tcu->driver);
+	tcu->console->flags |= CON_ANYTIME;
 #endif
 
 	/* setup the driver */
@@ -211,7 +216,7 @@ static int tegra_tcu_probe(struct platform_device *pdev)
 	tcu->driver.driver_name = "tegra-tcu";
 	tcu->driver.dev_name = "ttyTCU";
 #if IS_ENABLED(CONFIG_SERIAL_TEGRA_TCU_CONSOLE)
-	tcu->driver.cons = &tcu->console;
+	tcu->driver.cons = tcu->console;
 #endif
 	tcu->driver.nr = 1;
 
@@ -252,7 +257,7 @@ static int tegra_tcu_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, tcu);
 #if IS_ENABLED(CONFIG_SERIAL_TEGRA_TCU_CONSOLE)
-	register_console(&tcu->console);
+	register_console(tcu->console);
 #endif
 
 	return 0;
@@ -272,7 +277,7 @@ static int tegra_tcu_remove(struct platform_device *pdev)
 	struct tegra_tcu *tcu = platform_get_drvdata(pdev);
 
 #if IS_ENABLED(CONFIG_SERIAL_TEGRA_TCU_CONSOLE)
-	unregister_console(&tcu->console);
+	unregister_console(tcu->console);
 #endif
 	mbox_free_channel(tcu->rx);
 	uart_remove_one_port(&tcu->driver, &tcu->port);
