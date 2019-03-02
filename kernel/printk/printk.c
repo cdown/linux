@@ -2560,8 +2560,48 @@ static int __init keep_bootcon_setup(char *str)
 
 early_param("keep_bootcon", keep_bootcon_setup);
 
+static ssize_t loglevel_show(struct device *dev, struct device_attribute *attr,
+			     char *buf)
+{
+	struct console *con = container_of(dev, struct console, dev);
+	return sprintf(buf, "%d\n", con->level);
+}
+
+static ssize_t loglevel_store(struct device *dev, struct device_attribute *attr,
+			      const char *buf, size_t count)
+{
+	struct console *con = container_of(dev, struct console, dev);
+	ssize_t ret;
+	int tmp;
+
+	ret = kstrtoint(buf, 10, &tmp);
+	if (ret < 0)
+		return ret;
+
+	if (tmp < LOGLEVEL_EMERG)
+		return -ERANGE;
+
+	/*
+	 * Mimic the behavior of /dev/kmsg with respect to minimum_loglevel.
+	 */
+	if (tmp < minimum_console_loglevel)
+		tmp = minimum_console_loglevel;
+
+	con->level = tmp;
+	return ret;
+}
+
+static DEVICE_ATTR_RW(loglevel);
+
+static struct attribute *console_sysfs_attrs[] = {
+	&dev_attr_loglevel.attr,
+	NULL,
+};
+ATTRIBUTE_GROUPS(console_sysfs);
+
 static struct bus_type console_subsys = {
 	.name = "console",
+	.dev_groups = console_sysfs_groups,
 };
 
 static void console_release(struct device *dev)
