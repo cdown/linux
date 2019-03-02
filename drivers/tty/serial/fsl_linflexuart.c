@@ -770,14 +770,11 @@ done:
 }
 
 static struct uart_driver linflex_reg;
-static struct console linflex_console = {
-	.name		= DEV_NAME,
+
+static struct console_operations linflex_console_ops = {
 	.write		= linflex_console_write,
-	.device		= uart_console_device,
+	.tty_dev		= uart_console_device,
 	.setup		= linflex_console_setup,
-	.flags		= CON_PRINTBUFFER,
-	.index		= -1,
-	.data		= &linflex_reg,
 };
 
 static void linflex_earlycon_write(struct console *con, const char *s,
@@ -788,13 +785,17 @@ static void linflex_earlycon_write(struct console *con, const char *s,
 	uart_console_write(&dev->port, s, n, linflex_earlycon_putchar);
 }
 
+static struct console_operations linflex_earlycon_ops = {
+	.write = linflex_earlycon_write,
+};
+
 static int __init linflex_early_console_setup(struct earlycon_device *device,
 					      const char *options)
 {
 	if (!device->port.membase)
 		return -ENODEV;
 
-	device->con->write = linflex_earlycon_write;
+	device->con->ops = &linflex_earlycon_ops;
 	earlycon_port = &device->port;
 
 	return 0;
@@ -803,9 +804,8 @@ static int __init linflex_early_console_setup(struct earlycon_device *device,
 OF_EARLYCON_DECLARE(linflex, "fsl,s32v234-linflexuart",
 		    linflex_early_console_setup);
 
-#define LINFLEX_CONSOLE	(&linflex_console)
 #else
-#define LINFLEX_CONSOLE	NULL
+static struct console_operations linflex_console_ops;
 #endif
 
 static struct uart_driver linflex_reg = {
@@ -813,7 +813,6 @@ static struct uart_driver linflex_reg = {
 	.driver_name	= DRIVER_NAME,
 	.dev_name	= DEV_NAME,
 	.nr		= ARRAY_SIZE(linflex_ports),
-	.cons		= LINFLEX_CONSOLE,
 };
 
 static int linflex_probe(struct platform_device *pdev)
@@ -909,13 +908,27 @@ static int __init linflex_serial_init(void)
 {
 	int ret;
 
+#ifdef CONFIG_SERIAL_FSL_LINFLEXUART_CONSOLE
+	ret = uart_init_console_dfl(&linflex_reg, &linflex_console_ops,
+					DEV_NAME);
+	if (ret < 0)
+		return ret;
+#endif
+
 	ret = uart_register_driver(&linflex_reg);
 	if (ret)
-		return ret;
+		goto err_put_console;
 
 	ret = platform_driver_register(&linflex_driver);
 	if (ret)
-		uart_unregister_driver(&linflex_reg);
+		goto err_put_driver;
+
+	return 0;
+
+err_put_driver:
+	uart_unregister_driver(&linflex_reg);
+err_put_console:
+	uart_put_console(&linflex_reg);
 
 	return ret;
 }

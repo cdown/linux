@@ -26,7 +26,7 @@ struct usbcons_info {
 };
 
 static struct usbcons_info usbcons_info;
-static struct console usbcons;
+static struct console *usbcons;
 
 /*
  * ------------------------------------------------------------
@@ -254,14 +254,10 @@ static struct tty_driver *usb_console_device(struct console *co, int *index)
 	return *p;
 }
 
-static struct console usbcons = {
-	.name =		"ttyUSB",
+static struct console_operations usb_console_ops = {
 	.write =	usb_console_write,
-	.device =	usb_console_device,
+	.tty_dev =	usb_console_device,
 	.setup =	usb_console_setup,
-	.flags =	CON_PRINTBUFFER,
-	.index =	-1,
-	.data = 	&usb_serial_tty_driver,
 };
 
 void usb_serial_console_disconnect(struct usb_serial *serial)
@@ -272,7 +268,7 @@ void usb_serial_console_disconnect(struct usb_serial *serial)
 	}
 }
 
-void usb_serial_console_init(int minor)
+int usb_serial_console_init(int minor)
 {
 	if (minor == 0) {
 		/*
@@ -289,16 +285,26 @@ void usb_serial_console_init(int minor)
 		 * from register_console iff CON_PRINTBUFFER is set in flags.
 		 */
 		pr_debug("registering the USB serial console.\n");
-		register_console(&usbcons);
+
+		usbcons = init_console_dfl(&usb_console_ops, "ttyUSB",
+					       &usb_serial_tty_driver);
+		if (!usbcons)
+			return -ENOMEM;
+
+		register_console(usbcons);
 	}
+
+	return 0;
 }
 
 void usb_serial_console_exit(void)
 {
 	if (usbcons_info.port) {
-		unregister_console(&usbcons);
+		unregister_console(usbcons);
 		usbcons_info.port->port.console = 0;
 		usbcons_info.port = NULL;
 	}
+
+	put_console(usbcons);
 }
 

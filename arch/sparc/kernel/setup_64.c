@@ -89,10 +89,14 @@ prom_console_write(struct console *con, const char *s, unsigned int n)
 /* Exported for mm/init.c:paging_init. */
 unsigned long cmdline_memory_size = 0;
 
+static struct console_operations prom_ops = {
+	.write =	prom_console_write,
+};
+
 static struct console prom_early_console = {
 	.name =		"earlyprom",
-	.write =	prom_console_write,
 	.flags =	CON_PRINTBUFFER | CON_BOOT | CON_ANYTIME,
+	.ops =		&prom_ops,
 	.index =	-1,
 };
 

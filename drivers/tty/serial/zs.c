@@ -1217,15 +1217,14 @@ static int __init zs_console_setup(struct console *co, char *options)
 }
 
 static struct uart_driver zs_reg;
-static struct console zs_console = {
-	.name	= "ttyS",
+
+static struct console_operations zs_cons_ops = {
 	.write	= zs_console_write,
-	.device	= uart_console_device,
+	.tty_dev	= uart_console_device,
 	.setup	= zs_console_setup,
-	.flags	= CON_PRINTBUFFER,
-	.index	= -1,
-	.data	= &zs_reg,
 };
+
+static struct console __initdata *zs_console;
 
 /*
  *	Register console.
@@ -1234,17 +1233,25 @@ static int __init zs_serial_console_init(void)
 {
 	int ret;
 
+	zs_console = init_console_dfl(&zs_cons_ops, "ttyS", &zs_reg);
+	if (!zs_console)
+		return -ENOMEM;
+
 	ret = zs_probe_sccs();
 	if (ret)
-		return ret;
-	register_console(&zs_console);
+		goto err;
 
+	register_console(zs_console);
 	return 0;
+
+err:
+	put_console(zs_console);
+	return ret;
 }
 
 console_initcall(zs_serial_console_init);
 
-#define SERIAL_ZS_CONSOLE	&zs_console
+#define SERIAL_ZS_CONSOLE	(zs_console)
 #else
 #define SERIAL_ZS_CONSOLE	NULL
 #endif /* CONFIG_SERIAL_ZS_CONSOLE */
@@ -1256,7 +1263,6 @@ static struct uart_driver zs_reg = {
 	.major			= TTY_MAJOR,
 	.minor			= 64,
 	.nr			= ZS_NUM_SCCS * ZS_NUM_CHAN,
-	.cons			= SERIAL_ZS_CONSOLE,
 };
 
 /* zs_init inits the driver. */
@@ -1271,6 +1277,7 @@ static int __init zs_init(void)
 	if (ret)
 		return ret;
 
+	zs_reg.cons = SERIAL_ZS_CONSOLE;
 	ret = uart_register_driver(&zs_reg);
 	if (ret)
 		return ret;

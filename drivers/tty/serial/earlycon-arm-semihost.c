@@ -42,10 +42,14 @@ static void smh_write(struct console *con, const char *s, unsigned n)
 	uart_console_write(&dev->port, s, n, smh_putc);
 }
 
+static struct console_operations smh_early_cons_ops = {
+	.write = smh_write,
+};
+
 static int
 __init early_smh_setup(struct earlycon_device *device, const char *opt)
 {
-	device->con->write = smh_write;
+	device->con->ops = &smh_early_cons_ops;
 	return 0;
 }
 EARLYCON_DECLARE(smh, early_smh_setup);

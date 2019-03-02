@@ -22,10 +22,14 @@ static void stderr_console_write(struct console *console, const char *string,
 	generic_write(2 /* stderr */, string, len, NULL);
 }
 
+static struct console_operations stderr_ops = {
+	.write		= stderr_console_write,
+};
+
 static struct console stderr_console = {
 	.name		= "stderr",
-	.write		= stderr_console_write,
 	.flags		= CON_PRINTBUFFER,
+	.ops		= &stderr_ops,
 };
 
 static int __init stderr_console_init(void)

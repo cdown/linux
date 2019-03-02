@@ -251,14 +251,11 @@ static struct notifier_block on_reboot_nb = {
  * used to register the SCLP console to the kernel and to
  * give printk necessary information
  */
-static struct console sclp_console =
-{
-	.name = sclp_console_name,
+static struct console_operations sclp_cons_ops = {
 	.write = sclp_console_write,
-	.device = sclp_console_device,
-	.flags = CON_PRINTBUFFER,
-	.index = 0 /* ttyS0 */
+	.tty_dev = sclp_console_device,
 };
+
 
 /*
  * called by console_init() in drivers/char/tty_io.c at boot-time.
@@ -266,6 +263,7 @@ static struct console sclp_console =
 static int __init
 sclp_console_init(void)
 {
+	struct console *sclp_console;
 	void *page;
 	int i;
 	int rc;
@@ -273,9 +271,16 @@ sclp_console_init(void)
 	/* SCLP consoles are handled together */
 	if (!(CONSOLE_IS_SCLP || CONSOLE_IS_VT220))
 		return 0;
+
 	rc = sclp_rw_init();
 	if (rc)
 		return rc;
+
+	sclp_console = init_console_dfl(&sclp_cons_ops, sclp_console_name,
+					    NULL);
+	if (!sclp_console)
+		return -ENOMEM;
+
 	/* Allocate pages for output buffering */
 	for (i = 0; i < sclp_console_pages; i++) {
 		page = (void *) get_zeroed_page(GFP_KERNEL | GFP_DMA);
@@ -287,7 +292,7 @@ sclp_console_init(void)
 	/* enable printk-access to this driver */
 	atomic_notifier_chain_register(&panic_notifier_list, &on_panic_nb);
 	register_reboot_notifier(&on_reboot_nb);
-	register_console(&sclp_console);
+	register_console(sclp_console);
 	return 0;
 }
 
