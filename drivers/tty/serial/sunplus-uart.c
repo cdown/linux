@@ -554,20 +554,13 @@ static int __init sunplus_console_setup(struct console *co, char *options)
 }
 
 static struct uart_driver sunplus_uart_driver;
-static struct console sunplus_uart_console = {
-	.name		= "ttySUP",
-	.write		= sunplus_console_write,
-	.device		= uart_console_device,
-	.setup		= sunplus_console_setup,
-	.flags		= CON_PRINTBUFFER,
-	.index		= -1,
-	.data		= &sunplus_uart_driver
-};
 
-#define	SERIAL_SUNPLUS_CONSOLE	(&sunplus_uart_console)
-#else
-#define	SERIAL_SUNPLUS_CONSOLE	NULL
-#endif
+static struct console_operations sunplus_uart_console_ops = {
+	.write		= sunplus_console_write,
+	.tty_dev	= uart_console_device,
+	.setup		= sunplus_console_setup,
+};
+#endif /* CONSOLE_SERIAL_SUNPLUS_CONSOLE */
 
 static struct uart_driver sunplus_uart_driver = {
 	.owner		= THIS_MODULE,
@@ -576,7 +569,6 @@ static struct uart_driver sunplus_uart_driver = {
 	.major		= TTY_MAJOR,
 	.minor		= 64,
 	.nr		= SUP_UART_NR,
-	.cons		= SERIAL_SUNPLUS_CONSOLE,
 };
 
 static void sunplus_uart_disable_unprepare(void *data)
@@ -717,6 +709,13 @@ static int __init sunplus_uart_init(void)
 {
 	int ret;
 
+#ifdef CONFIG_SERIAL_SUNPLUS_CONSOLE
+	ret = uart_init_console_dfl(&sunplus_uart_driver,
+				    &sunplus_uart_console_ops, "ttySUP");
+	if (ret)
+		return ret;
+#endif
+
 	ret = uart_register_driver(&sunplus_uart_driver);
 	if (ret)
 		return ret;
@@ -757,13 +756,17 @@ static void sunplus_uart_early_write(struct console *con, const char *s, unsigne
 	uart_console_write(&dev->port, s, n, sunplus_uart_putc);
 }
 
+static struct console_operations sunplus_uart_early_console_ops = {
+	.write		= sunplus_uart_early_write,
+};
+
 static int __init
 sunplus_uart_early_setup(struct earlycon_device *dev, const char *opt)
 {
 	if (!(dev->port.membase || dev->port.iobase))
 		return -ENODEV;
 
-	dev->con->write = sunplus_uart_early_write;
+	dev->con->ops = &sunplus_uart_early_console_ops;
 
 	return 0;
 }

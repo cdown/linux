@@ -1384,28 +1384,30 @@ static int __init cpm_uart_console_setup(struct console *co, char *options)
 }
 
 static struct uart_driver cpm_reg;
-static struct console cpm_scc_uart_console = {
-	.name		= "ttyCPM",
+
+static struct console_operations cpm_scc_cons_ops = {
 	.write		= cpm_uart_console_write,
-	.device		= uart_console_device,
+	.tty_dev		= uart_console_device,
 	.setup		= cpm_uart_console_setup,
-	.flags		= CON_PRINTBUFFER,
-	.index		= -1,
-	.data		= &cpm_reg,
 };
 
 static int __init cpm_uart_console_init(void)
 {
+	struct console *cpm_scc_uart_console;
+
+	cpm_scc_uart_console = init_console_dfl(&cpm_scc_cons_ops, "ttyCPM",
+						    &cpm_reg);
+	if (!cpm_scc_uart_console)
+		return -ENOMEM;
+
 	cpm_muram_init();
-	register_console(&cpm_scc_uart_console);
+	cpm_reg->cons = cpm_scc_uart_console;
+	register_console(cpm_scc_uart_console);
 	return 0;
 }
 
 console_initcall(cpm_uart_console_init);
 
-#define CPM_UART_CONSOLE	&cpm_scc_uart_console
-#else
-#define CPM_UART_CONSOLE	NULL
 #endif
 
 static struct uart_driver cpm_reg = {
@@ -1414,7 +1416,6 @@ static struct uart_driver cpm_reg = {
 	.dev_name	= "ttyCPM",
 	.major		= SERIAL_CPM_MAJOR,
 	.minor		= SERIAL_CPM_MINOR,
-	.cons		= CPM_UART_CONSOLE,
 	.nr		= UART_NR,
 };
 

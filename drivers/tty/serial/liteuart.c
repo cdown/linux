@@ -62,9 +62,6 @@ static struct uart_driver liteuart_driver = {
 	.major = 0,
 	.minor = 0,
 	.nr = CONFIG_SERIAL_LITEUART_MAX_PORTS,
-#ifdef CONFIG_SERIAL_LITEUART_CONSOLE
-	.cons = &liteuart_console,
-#endif
 };
 
 static void liteuart_timer(struct timer_list *t)
@@ -367,14 +364,16 @@ static int liteuart_console_setup(struct console *co, char *options)
 	return uart_set_options(port, co, baud, parity, bits, flow);
 }
 
+static struct console_operations liteuart_console_ops = {
+	.write = liteuart_console_write,
+	.tty_dev = uart_console_device,
+	.setup = liteuart_console_setup,
+};
+
 static struct console liteuart_console = {
 	.name = "liteuart",
-	.write = liteuart_console_write,
-	.device = uart_console_device,
-	.setup = liteuart_console_setup,
 	.flags = CON_PRINTBUFFER,
-	.index = -1,
-	.data = &liteuart_driver,
+	.ops = &liteuart_console_ops,
 };
 
 static int __init liteuart_console_init(void)
@@ -394,13 +393,17 @@ static void early_liteuart_write(struct console *console, const char *s,
 	uart_console_write(port, s, count, liteuart_putchar);
 }
 
+static struct console_operations early_liteuart_console_ops = {
+	.write = early_liteuart_write,
+};
+
 static int __init early_liteuart_setup(struct earlycon_device *device,
 				       const char *options)
 {
 	if (!device->port.membase)
 		return -ENODEV;
 
-	device->con->write = early_liteuart_write;
+	device->con->ops = &early_liteuart_console_ops;
 	return 0;
 }
 
@@ -410,6 +413,13 @@ OF_EARLYCON_DECLARE(liteuart, "litex,liteuart", early_liteuart_setup);
 static int __init liteuart_init(void)
 {
 	int res;
+
+#ifdef CONFIG_SERIAL_LITEUART_CONSOLE
+	res = uart_init_console_dfl(&liteuart_driver, &liteuart_console_ops,
+				    "liteuart");
+	if (res)
+		return res;
+#endif
 
 	res = uart_register_driver(&liteuart_driver);
 	if (res)

@@ -146,10 +146,14 @@ static void udbg_console_write(struct console *con, const char *s,
 	udbg_write(s, n);
 }
 
+static struct console_operations udbg_ops = {
+	.write	= udbg_console_write,
+};
+
 static struct console udbg_console = {
 	.name	= "udbg",
-	.write	= udbg_console_write,
 	.flags	= CON_PRINTBUFFER | CON_ENABLED | CON_BOOT | CON_ANYTIME,
+	.ops	= &udbg_ops,
 	.index	= 0,
 };
 

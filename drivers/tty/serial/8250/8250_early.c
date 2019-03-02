@@ -154,6 +154,11 @@ static void __init init_port(struct earlycon_device *device)
 	}
 }
 
+static struct console_operations early_serial8250_ops = {
+	.write = early_serial8250_write,
+	.read = early_serial8250_read,
+};
+
 int __init early_serial8250_setup(struct earlycon_device *device,
 					 const char *options)
 {
@@ -170,8 +175,7 @@ int __init early_serial8250_setup(struct earlycon_device *device,
 	} else
 		init_port(device);
 
-	device->con->write = early_serial8250_write;
-	device->con->read = early_serial8250_read;
+	device->con->ops = &early_serial8250_ops;
 	return 0;
 }
 EARLYCON_DECLARE(uart8250, early_serial8250_setup);
@@ -183,6 +187,10 @@ OF_EARLYCON_DECLARE(uart, "snps,dw-apb-uart", early_serial8250_setup);
 
 #ifdef CONFIG_SERIAL_8250_OMAP
 
+static struct console_operations early_omap8250_cons_ops = {
+	.write = early_serial8250_write,
+};
+
 static int __init early_omap8250_setup(struct earlycon_device *device,
 				       const char *options)
 {
@@ -192,7 +200,7 @@ static int __init early_omap8250_setup(struct earlycon_device *device,
 		return -ENODEV;
 
 	port->regshift = 2;
-	device->con->write = early_serial8250_write;
+	device->con->ops = &early_omap8250_cons_ops;
 	return 0;
 }
 
@@ -204,12 +212,16 @@ OF_EARLYCON_DECLARE(omap8250, "ti,omap4-uart", early_omap8250_setup);
 
 #ifdef CONFIG_SERIAL_8250_RT288X
 
+static struct console_operations early_serial8250_cons_ops = {
+	.write = early_serial8250_write,
+};
+
 static int __init early_au_setup(struct earlycon_device *dev, const char *opt)
 {
 	dev->port.serial_in = au_serial_in;
 	dev->port.serial_out = au_serial_out;
 	dev->port.iotype = UPIO_AU;
-	dev->con->write = early_serial8250_write;
+	dev->con->ops = &early_serial8250_cons_ops;
 	return 0;
 }
 OF_EARLYCON_DECLARE(palmchip, "ralink,rt2880-uart", early_au_setup);

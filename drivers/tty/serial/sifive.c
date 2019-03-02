@@ -774,6 +774,10 @@ static void early_sifive_serial_write(struct console *con, const char *s,
 	uart_console_write(port, s, n, early_sifive_serial_putc);
 }
 
+static struct console_operations early_sifive_serial_console_ops = {
+	.write = early_sifive_serial_write,
+};
+
 static int __init early_sifive_serial_setup(struct earlycon_device *dev,
 					    const char *options)
 {
@@ -782,7 +786,7 @@ static int __init early_sifive_serial_setup(struct earlycon_device *dev,
 	if (!port->membase)
 		return -ENODEV;
 
-	dev->con->write = early_sifive_serial_write;
+	dev->con->ops = &early_sifive_serial_console_ops;
 
 	return 0;
 }
@@ -862,19 +866,25 @@ static int __init sifive_serial_console_setup(struct console *co, char *options)
 
 static struct uart_driver sifive_serial_uart_driver;
 
-static struct console sifive_serial_console = {
-	.name		= SIFIVE_TTY_PREFIX,
+static struct console_operations sifive_serial_console_ops = {
 	.write		= sifive_serial_console_write,
-	.device		= uart_console_device,
+	.tty_dev		= uart_console_device,
 	.setup		= sifive_serial_console_setup,
-	.flags		= CON_PRINTBUFFER,
-	.index		= -1,
-	.data		= &sifive_serial_uart_driver,
 };
+
+static struct console *sifive_serial_console;
 
 static int __init sifive_console_init(void)
 {
-	register_console(&sifive_serial_console);
+	sifive_serial_console = init_console_dfl(&sifive_serial_console_ops,
+						     SIFIVE_TTY_PREFIX,
+						     &sifive_serial_uart_driver);
+	if (!sifive_serial_console)
+		return -ENOMEM;
+
+	sifive_serial_uart_driver.cons = sifive_serial_console;
+	register_console(sifive_serial_console);
+
 	return 0;
 }
 
@@ -890,11 +900,7 @@ static void __ssp_remove_console_port(struct sifive_serial_port *ssp)
 	sifive_serial_console_ports[ssp->port.line] = NULL;
 }
 
-#define SIFIVE_SERIAL_CONSOLE	(&sifive_serial_console)
-
 #else
-
-#define SIFIVE_SERIAL_CONSOLE	NULL
 
 static void __ssp_add_console_port(struct sifive_serial_port *ssp)
 {}
@@ -930,7 +936,6 @@ static struct uart_driver sifive_serial_uart_driver = {
 	.driver_name	= SIFIVE_SERIAL_NAME,
 	.dev_name	= SIFIVE_TTY_PREFIX,
 	.nr		= SIFIVE_SERIAL_MAX_PORTS,
-	.cons		= SIFIVE_SERIAL_CONSOLE,
 };
 
 static int sifive_serial_probe(struct platform_device *pdev)
