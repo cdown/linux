@@ -2377,8 +2377,8 @@ static void set_user_specified(struct console_cmdline *c, bool user_specified)
 }
 
 static int __add_preferred_console(char *name, int idx, int loglevel,
-				   char *options, char *brl_options,
-				   bool user_specified)
+				   bool loglevel_set, char *options,
+				   char *brl_options, bool user_specified)
 {
 	struct console_cmdline *c;
 	int i;
@@ -2407,6 +2407,7 @@ static int __add_preferred_console(char *name, int idx, int loglevel,
 	braille_set_options(c, brl_options);
 
 	c->loglevel = loglevel;
+	c->loglevel_set = loglevel_set;
 	c->index = idx;
 	return 0;
 }
@@ -2430,6 +2431,7 @@ static int __init console_setup(char *str)
 	char buf[sizeof(console_cmdline[0].name) + 4]; /* 4 for "ttyS" */
 	char *s, *options, *slevel, *brl_options = NULL;
 	int loglevel = default_console_loglevel;
+	bool loglevel_set = false;
 	int idx;
 
 	/*
@@ -2438,7 +2440,8 @@ static int __init console_setup(char *str)
 	 * for exactly this purpose.
 	 */
 	if (str[0] == 0 || strcmp(str, "null") == 0) {
-		__add_preferred_console("ttynull", 0, 0, NULL, NULL, true);
+		__add_preferred_console("ttynull", 0, 0, true, NULL, NULL,
+					true);
 		return 1;
 	}
 
@@ -2464,6 +2467,8 @@ static int __init console_setup(char *str)
 		*(slevel++) = 0;
 		if (kstrtoint(slevel, 10, &loglevel))
 			loglevel = default_console_loglevel;
+		else
+			loglevel_set = true;
 	}
 
 #ifdef __sparc__
@@ -2478,7 +2483,8 @@ static int __init console_setup(char *str)
 	idx = simple_strtoul(s, NULL, 10);
 	*s = 0;
 
-	__add_preferred_console(buf, idx, loglevel, options, brl_options, true);
+	__add_preferred_console(buf, idx, loglevel, loglevel_set, options,
+				brl_options, true);
 	return 1;
 }
 __setup("console=", console_setup);
@@ -2499,7 +2505,7 @@ __setup("console=", console_setup);
 int add_preferred_console(char *name, int idx, char *options)
 {
 	return __add_preferred_console(name, idx, default_console_loglevel,
-				       options, NULL, false);
+				       true, options, NULL, false);
 }
 
 bool console_suspend_enabled = true;
@@ -2948,6 +2954,70 @@ static int __init keep_bootcon_setup(char *str)
 
 early_param("keep_bootcon", keep_bootcon_setup);
 
+static ssize_t loglevel_show(struct device *dev, struct device_attribute *attr,
+			     char *buf)
+{
+	struct console *con = container_of(dev, struct console, refdev);
+	return sprintf(buf, "%d\n", con->level);
+}
+
+static ssize_t loglevel_store(struct device *dev, struct device_attribute *attr,
+			      const char *buf, size_t size)
+{
+	struct console *con = container_of(dev, struct console, refdev);
+	ssize_t ret;
+	int tmp;
+
+	ret = kstrtoint(buf, 10, &tmp);
+	if (ret < 0)
+		return ret;
+
+	if (tmp < LOGLEVEL_EMERG)
+		return -ERANGE;
+
+	/*
+	 * Mimic the behavior of /dev/kmsg with respect to minimum_loglevel.
+	 */
+	if (tmp < minimum_console_loglevel)
+		tmp = minimum_console_loglevel;
+
+	con->level = tmp;
+	con->flags |= CON_LOCALLEVEL;
+
+	return size;
+}
+
+static DEVICE_ATTR_RW(loglevel);
+
+static ssize_t loglevel_source_show(struct device *dev,
+				    struct device_attribute *attr,
+				    char *buf)
+{
+	struct console *con = container_of(dev, struct console, refdev);
+	return sprintf(buf, "%s\n",
+		       con->flags & CON_LOCALLEVEL ? "local" : "global");
+}
+
+static DEVICE_ATTR_RO(loglevel_source);
+
+static ssize_t enabled_show(struct device *dev, struct device_attribute *attr,
+			    char *buf)
+{
+	struct console *con = container_of(dev, struct console, refdev);
+	return sprintf(buf, "%d\n", !!(con->flags & CON_ENABLED));
+}
+
+static DEVICE_ATTR_RO(enabled);
+
+static struct attribute *console_sysfs_attrs[] = {
+	&dev_attr_loglevel.attr,
+	&dev_attr_loglevel_source.attr,
+	&dev_attr_enabled.attr,
+	NULL,
+};
+
+ATTRIBUTE_GROUPS(console_sysfs);
+
 static void console_refdev_release(struct device *dev)
 {
 	/*
@@ -3010,7 +3080,8 @@ static int try_enable_preferred_console(struct console *newcon,
 				newcon->index = c->index;
 
 			newcon->level = c->loglevel;
-			newcon->flags |= CON_LOCALLEVEL;
+			if (c->loglevel_set)
+				newcon->flags |= CON_LOCALLEVEL;
 
 			if (_braille_register_console(newcon, c))
 				return 0;
@@ -3353,7 +3424,8 @@ static int __init printk_late_init(void)
 	printk_sysctl_init();
 
 	console_class = class_create(THIS_MODULE, "console");
-	WARN_ON(IS_ERR(console_class));
+	if (!WARN_ON(IS_ERR(console_class)))
+		console_class->dev_groups = console_sysfs_groups;
 
 	printk_late_done = 1;
 	for_each_console(con)
