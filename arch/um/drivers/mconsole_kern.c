@@ -579,14 +579,19 @@ static void console_write(struct console *console, const char *string,
 	}
 }
 
-static struct console mc_console = { .name	= "mc",
-				     .write	= console_write,
-				     .flags	= CON_ENABLED,
-				     .index	= -1 };
+static struct console_operations mc_cons_ops = {
+	.write = console_write,
+};
 
 static int mc_add_console(void)
 {
-	register_console(&mc_console);
+	struct console *mc_console = init_console_dfl(&mc_cons_ops, "mc",
+							  NULL);
+	if (!mc_console)
+		return -ENOMEM;
+
+	mc_console->flags = CON_ENABLED;
+	register_console(mc_console);
 	return 0;
 }
 

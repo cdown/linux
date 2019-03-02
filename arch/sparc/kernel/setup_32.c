@@ -113,10 +113,14 @@ prom_console_write(struct console *con, const char *s, unsigned int n)
 	prom_write(s, n);
 }
 
+static struct console_operations prom_ops = {
+	.write =	prom_console_write,
+};
+
 static struct console prom_early_console = {
 	.name =		"earlyprom",
-	.write =	prom_console_write,
 	.flags =	CON_PRINTBUFFER | CON_BOOT,
+	.ops =		&prom_ops,
 	.index =	-1,
 };
 
