@@ -2408,7 +2408,8 @@ EXPORT_SYMBOL_GPL(add_swap_extent);
  * for swapping.
  *
  * For all swap devices we set S_SWAPFILE across the life of the swapon.  This
- * prevents users from writing to the swap device, which will corrupt memory.
+ * prevents users from writing to the swap device, which will corrupt memory. We
+ * do, however, permit extension through fallocate.
  *
  * The amount of disk space which a single swap extent represents varies.
  * Typically it is in the 1-4 megabyte range.  So we can have hundreds of

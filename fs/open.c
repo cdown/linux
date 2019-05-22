@@ -276,9 +276,10 @@ int vfs_fallocate(struct file *file, int mode, loff_t offset, loff_t len)
 		return -EPERM;
 
 	/*
-	 * We cannot allow any fallocate operation on an active swapfile
+	 * We only allow extending active swap files, which can then be remapped
+	 * by swapextend. Modes are not supported, just bare fallocate.
 	 */
-	if (IS_SWAPFILE(inode))
+	if (IS_SWAPFILE(inode) && mode)
 		return -ETXTBSY;
 
 	/*
