@@ -2552,55 +2552,75 @@ bool has_usable_swap(void)
 	return ret;
 }
 
+static int find_swap_entry(const char __user *user_filename, struct swap_info_struct **sis) {
+	struct filename *swap_filename;
+	struct file *swap_file;
+	struct address_space *mapping;
+	struct swap_info_struct *tmp_sis = NULL;
+	int ret;
+
+	swap_filename = getname(user_filename);
+	if (IS_ERR(swap_filename))
+		return PTR_ERR(swap_filename);
+
+	swap_file = file_open_name(swap_filename, O_RDWR|O_LARGEFILE, 0);
+	ret = PTR_ERR(swap_file);
+	if (IS_ERR(swap_file)) {
+		ret = PTR_ERR(swap_file);
+		goto out_putname;
+	}
+
+	mapping = swap_file->f_mapping;
+	spin_lock(&swap_lock);
+	plist_for_each_entry(tmp_sis, &swap_active_head, list) {
+		if (tmp_sis->flags & SWP_WRITEOK) {
+			if (tmp_sis->swap_file->f_mapping == mapping) {
+				*sis = tmp_sis;
+				ret = 0;
+				goto out_all;
+			}
+		}
+	}
+
+	/* we're not swapping on this file */
+	ret = -EINVAL;
+
+out_all:
+	filp_close(swap_file, NULL);
+	spin_unlock(&swap_lock);
+
+out_putname:
+	putname(swap_filename);
+
+	return ret;
+}
+
 SYSCALL_DEFINE1(swapoff, const char __user *, specialfile)
 {
 	struct swap_info_struct *p = NULL;
 	unsigned char *swap_map;
 	unsigned long *frontswap_map;
-	struct file *swap_file, *victim;
-	struct address_space *mapping;
+	struct file *swap_file;
 	struct inode *inode;
-	struct filename *pathname;
-	int err, found = 0;
+	int err;
 	unsigned int old_block_size;
 
 	if (!capable(CAP_SYS_ADMIN))
 		return -EPERM;
 
+
+	err = find_swap_entry(specialfile, &p);
+	if (err)
+		return err;
+
 	BUG_ON(!current->mm);
 
-	pathname = getname(specialfile);
-	if (IS_ERR(pathname))
-		return PTR_ERR(pathname);
-
-	victim = file_open_name(pathname, O_RDWR|O_LARGEFILE, 0);
-	err = PTR_ERR(victim);
-	if (IS_ERR(victim))
-		goto out;
-
-	mapping = victim->f_mapping;
-	spin_lock(&swap_lock);
-	plist_for_each_entry(p, &swap_active_head, list) {
-		if (p->flags & SWP_WRITEOK) {
-			if (p->swap_file->f_mapping == mapping) {
-				found = 1;
-				break;
-			}
-		}
-	}
-	if (!found) {
-		err = -EINVAL;
-		spin_unlock(&swap_lock);
-		goto out_dput;
-	}
 	if (!security_vm_enough_memory_mm(current->mm, p->pages))
 		vm_unacct_memory(p->pages);
-	else {
-		err = -ENOMEM;
-		spin_unlock(&swap_lock);
-		goto out_dput;
-	}
+	else
+		return -ENOMEM;
 	del_from_avail_list(p);
+	spin_lock(&swap_lock);
 	spin_lock(&p->lock);
 	if (p->prio < 0) {
 		struct swap_info_struct *si = p;
@@ -2633,7 +2653,7 @@ SYSCALL_DEFINE1(swapoff, const char __user *, specialfile)
 		/* re-insert swap space back into swap_list */
 		reinsert_swap_info(p);
 		reenable_swap_slots_cache_unlock();
-		goto out_dput;
+		return err;
 	}
 
 	reenable_swap_slots_cache_unlock();
@@ -2674,6 +2694,7 @@ SYSCALL_DEFINE1(swapoff, const char __user *, specialfile)
 	}
 
 	swap_file = p->swap_file;
+	inode = swap_file->f_mapping->host;
 	old_block_size = p->old_block_size;
 	p->swap_file = NULL;
 	p->max = 0;
@@ -2699,7 +2720,6 @@ SYSCALL_DEFINE1(swapoff, const char __user *, specialfile)
 	swap_cgroup_swapoff(p->type);
 	exit_swap_address_space(p->type);
 
-	inode = mapping->host;
 	if (S_ISBLK(inode->i_mode)) {
 		struct block_device *bdev = I_BDEV(inode);
 
@@ -2710,7 +2730,6 @@ SYSCALL_DEFINE1(swapoff, const char __user *, specialfile)
 	inode_lock(inode);
 	inode->i_flags &= ~S_SWAPFILE;
 	inode_unlock(inode);
-	filp_close(swap_file, NULL);
 
 	/*
 	 * Clear the SWP_USED flag after all resources are freed so that swapon
@@ -2721,15 +2740,10 @@ SYSCALL_DEFINE1(swapoff, const char __user *, specialfile)
 	p->flags = 0;
 	spin_unlock(&swap_lock);
 
-	err = 0;
 	atomic_inc(&proc_poll_event);
 	wake_up_interruptible(&proc_poll_wait);
 
-out_dput:
-	filp_close(victim, NULL);
-out:
-	putname(pathname);
-	return err;
+	return 0;
 }
 
 #ifdef CONFIG_PROC_FS
