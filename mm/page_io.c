@@ -143,9 +143,11 @@ out:
 	}
 }
 
-int generic_swapfile_activate(struct swap_info_struct *sis,
-				struct file *swap_file,
-				sector_t *span)
+static int generic_allocate_swap_extents(struct swap_info_struct *sis,
+					 struct file *swap_file,
+					 sector_t *span,
+					 unsigned long start_page_no,
+					 sector_t start_probe_block)
 {
 	struct address_space *mapping = swap_file->f_mapping;
 	struct inode *inode = mapping->host;
@@ -166,8 +168,8 @@ int generic_swapfile_activate(struct swap_info_struct *sis,
 	 * Map all the blocks into the extent tree.  This code doesn't try
 	 * to be very smart.
 	 */
-	probe_block = 0;
-	page_no = 0;
+	probe_block = start_probe_block;
+	page_no = start_page_no;
 	last_block = i_size_read(inode) >> blkbits;
 	while ((probe_block + blocks_per_page) <= last_block &&
 			page_no < sis->max) {
@@ -235,9 +237,16 @@ reprobe:
 out:
 	return ret;
 bad_bmap:
-	pr_err("swapon: swapfile has holes\n");
+	pr_err("swapfile has holes, cannot allocate extents\n");
 	ret = -EINVAL;
 	goto out;
+}
+
+int generic_swapfile_activate(struct swap_info_struct *sis,
+				struct file *swap_file,
+				sector_t *span)
+{
+	return generic_allocate_swap_extents(sis, swap_file, span, 0, 0);
 }
 
 /*
