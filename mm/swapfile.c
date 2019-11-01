@@ -48,6 +48,9 @@ static bool swap_count_continued(struct swap_info_struct *, pgoff_t,
 				 unsigned char);
 static void free_swap_count_continuations(struct swap_info_struct *);
 static sector_t map_swap_entry(swp_entry_t, struct block_device**);
+static void spread_cluster_info_cachelines(struct swap_info_struct *sis,
+					   unsigned long maxpages,
+					   struct xarray *clusters);
 
 DEFINE_SPINLOCK(swap_lock);
 static unsigned int nr_swapfiles;
@@ -3075,12 +3078,9 @@ static int setup_swap_map_and_extents(struct swap_info_struct *p,
 					unsigned long maxpages,
 					sector_t *span)
 {
-	unsigned int j, k;
 	unsigned int nr_good_pages;
 	int nr_extents;
-	unsigned long nr_clusters = DIV_ROUND_UP(maxpages, SWAPFILE_CLUSTER);
-	unsigned long col = p->cluster_next / SWAPFILE_CLUSTER % SWAP_CLUSTER_COLS;
-	unsigned long i, idx;
+	unsigned long i;
 
 	nr_good_pages = maxpages - 1;	/* omit header page */
 
@@ -3125,9 +3125,24 @@ static int setup_swap_map_and_extents(struct swap_info_struct *p,
 		return -EINVAL;
 	}
 
-	if (!(p->flags & SWP_SOLIDSTATE))
-		return nr_extents;
+	if (p->flags & SWP_SOLIDSTATE)
+		spread_cluster_info_cachelines(p, maxpages, clusters);
 
+	return nr_extents;
+}
+
+static void spread_cluster_info_cachelines(struct swap_info_struct *sis,
+					   unsigned long maxpages,
+					   struct xarray *clusters)
+{
+	unsigned long col, nr_clusters, idx, i;
+	unsigned int j, k;
+
+	if (!(sis->flags & SWP_SOLIDSTATE))
+		return;
+
+	col = sis->cluster_next / SWAPFILE_CLUSTER % SWAP_CLUSTER_COLS;
+	nr_clusters = DIV_ROUND_UP(maxpages, SWAPFILE_CLUSTER);
 
 	/*
 	 * Reduce false cache line sharing between clusters and
@@ -3136,17 +3151,19 @@ static int setup_swap_map_and_extents(struct swap_info_struct *p,
 	for (k = 0; k < SWAP_CLUSTER_COLS; k++) {
 		j = (k + col) % SWAP_CLUSTER_COLS;
 		for (i = 0; i < DIV_ROUND_UP(nr_clusters, SWAP_CLUSTER_COLS); i++) {
+			struct swap_cluster_info *ci;
 			idx = i * SWAP_CLUSTER_COLS + j;
 			if (idx >= nr_clusters)
 				continue;
-			if (cluster_count(xa_load(clusters, idx)))
+
+			ci = xa_load(clusters, idx);
+			if (cluster_is_free(ci))
 				continue;
-			cluster_set_flag(xa_load(clusters, idx), CLUSTER_FLAG_FREE);
-			cluster_list_add_tail(&p->free_clusters, clusters,
+			cluster_set_flag(ci, CLUSTER_FLAG_FREE);
+			cluster_list_add_tail(&sis->free_clusters, clusters,
 					      idx);
 		}
 	}
-	return nr_extents;
 }
 
 /*
