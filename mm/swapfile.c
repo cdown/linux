@@ -336,15 +336,15 @@ static inline void cluster_clear_huge(struct swap_cluster_info *info)
 }
 
 static inline struct swap_cluster_info *lock_cluster(struct swap_info_struct *si,
-						     unsigned long offset)
+						     unsigned long page_nr)
 {
-	struct swap_cluster_info *ci;
+	struct swap_cluster_info *ci = NULL;
 
-	ci = si->clusters;
-	if (ci) {
-		ci += offset / SWAPFILE_CLUSTER;
+	if (si->flags & SWP_SOLIDSTATE) {
+		ci = xa_load(&si->clusters, page_nr / SWAPFILE_CLUSTER);
 		spin_lock(&ci->lock);
 	}
+
 	return ci;
 }
 
@@ -398,7 +398,7 @@ static void cluster_list_init(struct swap_cluster_list *list)
 }
 
 static void cluster_list_add_tail(struct swap_cluster_list *list,
-				  struct swap_cluster_info *ci,
+				  struct xarray *clusters,
 				  unsigned int idx)
 {
 	if (cluster_list_empty(list)) {
@@ -412,7 +412,7 @@ static void cluster_list_add_tail(struct swap_cluster_list *list,
 		 * Nested cluster lock, but both cluster locks are
 		 * only acquired when we held swap_info_struct->lock
 		 */
-		ci_tail = ci + tail;
+		ci_tail = xa_load(clusters, tail);
 		spin_lock_nested(&ci_tail->lock, SINGLE_DEPTH_NESTING);
 		cluster_set_next(ci_tail, idx);
 		spin_unlock(&ci_tail->lock);
@@ -421,7 +421,7 @@ static void cluster_list_add_tail(struct swap_cluster_list *list,
 }
 
 static unsigned int cluster_list_del_first(struct swap_cluster_list *list,
-					   struct swap_cluster_info *ci)
+					   struct xarray *clusters)
 {
 	unsigned int idx;
 
@@ -431,7 +431,7 @@ static unsigned int cluster_list_del_first(struct swap_cluster_list *list,
 		cluster_set_null(&list->tail);
 	} else
 		cluster_set_next_flag(&list->head,
-				      cluster_next(&ci[idx]), 0);
+				      cluster_next(xa_load(clusters, idx)), 0);
 
 	return idx;
 }
@@ -449,17 +449,17 @@ static void swap_cluster_schedule_discard(struct swap_info_struct *si,
 	memset(si->swap_map + idx * SWAPFILE_CLUSTER,
 			SWAP_MAP_BAD, SWAPFILE_CLUSTER);
 
-	cluster_list_add_tail(&si->discard_clusters, si->clusters, idx);
+	cluster_list_add_tail(&si->discard_clusters, &si->clusters, idx);
 
 	schedule_work(&si->discard_work);
 }
 
 static void __free_cluster(struct swap_info_struct *si, unsigned long idx)
 {
-	struct swap_cluster_info *ci = si->clusters;
+	struct xarray *clusters = &si->clusters;
 
-	cluster_set_flag(ci + idx, CLUSTER_FLAG_FREE);
-	cluster_list_add_tail(&si->free_clusters, ci, idx);
+	cluster_set_flag(xa_load(clusters, idx), CLUSTER_FLAG_FREE);
+	cluster_list_add_tail(&si->free_clusters, clusters, idx);
 }
 
 /*
@@ -468,13 +468,14 @@ static void __free_cluster(struct swap_info_struct *si, unsigned long idx)
 */
 static void swap_do_scheduled_discard(struct swap_info_struct *si)
 {
-	struct swap_cluster_info *info, *ci;
+	struct swap_cluster_info *ci;
+	struct xarray *clusters;
 	unsigned int idx;
 
-	info = si->clusters;
+	clusters = &si->clusters;
 
 	while (!cluster_list_empty(&si->discard_clusters)) {
-		idx = cluster_list_del_first(&si->discard_clusters, info);
+		idx = cluster_list_del_first(&si->discard_clusters, clusters);
 		spin_unlock(&si->lock);
 
 		discard_swap_cluster(si, idx * SWAPFILE_CLUSTER,
@@ -502,16 +503,14 @@ static void swap_discard_work(struct work_struct *work)
 
 static void alloc_cluster(struct swap_info_struct *si, unsigned long idx)
 {
-	struct swap_cluster_info *ci = si->clusters;
-
 	VM_BUG_ON(cluster_list_first(&si->free_clusters) != idx);
-	cluster_list_del_first(&si->free_clusters, ci);
-	cluster_set_count_flag(ci + idx, 0, 0);
+	cluster_list_del_first(&si->free_clusters, &si->clusters);
+	cluster_set_count_flag(xa_load(&si->clusters, idx), 0, 0);
 }
 
 static void free_cluster(struct swap_info_struct *si, unsigned long idx)
 {
-	struct swap_cluster_info *ci = si->clusters + idx;
+	struct swap_cluster_info *ci = xa_load(&si->clusters, idx);
 
 	VM_BUG_ON(cluster_count(ci) != 0);
 	/*
@@ -533,18 +532,21 @@ static void free_cluster(struct swap_info_struct *si, unsigned long idx)
  * removed from free cluster list and its usage counter will be increased.
  */
 static void inc_cluster_info_page(struct swap_info_struct *p,
-	struct swap_cluster_info *cluster_info, unsigned long page_nr)
+	struct xarray *clusters, unsigned long page_nr)
 {
 	unsigned long idx = page_nr / SWAPFILE_CLUSTER;
+	struct swap_cluster_info *ci;
 
-	if (!cluster_info)
+	if (!(p->flags & SWP_SOLIDSTATE))
 		return;
-	if (cluster_is_free(&cluster_info[idx]))
+
+	ci = xa_load(clusters, idx);
+
+	if (cluster_is_free(ci))
 		alloc_cluster(p, idx);
 
-	VM_BUG_ON(cluster_count(&cluster_info[idx]) >= SWAPFILE_CLUSTER);
-	cluster_set_count(&cluster_info[idx],
-		cluster_count(&cluster_info[idx]) + 1);
+	VM_BUG_ON(cluster_count(ci) >= SWAPFILE_CLUSTER);
+	cluster_set_count(ci, cluster_count(ci) + 1);
 }
 
 /*
@@ -553,18 +555,20 @@ static void inc_cluster_info_page(struct swap_info_struct *p,
  * optionally discard the cluster and add it to free cluster list.
  */
 static void dec_cluster_info_page(struct swap_info_struct *p,
-	struct swap_cluster_info *cluster_info, unsigned long page_nr)
+	struct xarray *clusters, unsigned long page_nr)
 {
 	unsigned long idx = page_nr / SWAPFILE_CLUSTER;
+	struct swap_cluster_info *ci;
 
-	if (!cluster_info)
+	if (!(p->flags & SWP_SOLIDSTATE))
 		return;
 
-	VM_BUG_ON(cluster_count(&cluster_info[idx]) == 0);
-	cluster_set_count(&cluster_info[idx],
-		cluster_count(&cluster_info[idx]) - 1);
+	ci = xa_load(clusters, idx);
 
-	if (cluster_count(&cluster_info[idx]) == 0)
+	VM_BUG_ON(cluster_count(ci) == 0);
+	cluster_set_count(ci, cluster_count(ci) - 1);
+
+	if (cluster_count(ci) == 0)
 		free_cluster(p, idx);
 }
 
@@ -582,7 +586,7 @@ scan_swap_map_ssd_cluster_conflict(struct swap_info_struct *si,
 	offset /= SWAPFILE_CLUSTER;
 	conflict = !cluster_list_empty(&si->free_clusters) &&
 		offset != cluster_list_first(&si->free_clusters) &&
-		cluster_is_free(&si->clusters[offset]);
+		cluster_is_free(xa_load(&si->clusters, offset));
 
 	if (!conflict)
 		return false;
@@ -791,7 +795,7 @@ static int scan_swap_map_slots(struct swap_info_struct *si,
 	offset = scan_base;
 
 	/* SSD algorithm */
-	if (si->clusters) {
+	if (si->flags & SWP_SOLIDSTATE) {
 		if (!scan_swap_map_try_ssd_cluster(si, &offset, &scan_base))
 			goto scan;
 	} else if (unlikely(!si->cluster_nr--)) {
@@ -834,7 +838,7 @@ static int scan_swap_map_slots(struct swap_info_struct *si,
 	}
 
 checks:
-	if (si->clusters) {
+	if (si->flags & SWP_SOLIDSTATE) {
 		while (scan_swap_map_ssd_cluster_conflict(si, offset)) {
 		/* take a break if we already got some slots */
 			if (n_ret)
@@ -873,7 +877,7 @@ checks:
 			goto done;
 	}
 	WRITE_ONCE(si->swap_map[offset], usage);
-	inc_cluster_info_page(si, si->clusters, offset);
+	inc_cluster_info_page(si, &si->clusters, offset);
 	unlock_cluster(ci);
 
 	swap_range_alloc(si, offset, 1);
@@ -896,7 +900,7 @@ checks:
 	}
 
 	/* try to get more slots in cluster */
-	if (si->clusters) {
+	if (si->flags & SWP_SOLIDSTATE) {
 		if (scan_swap_map_try_ssd_cluster(si, &offset, &scan_base))
 			goto checks;
 	} else if (si->cluster_nr && !si->swap_map[++offset]) {
@@ -1344,7 +1348,7 @@ static void swap_entry_free(struct swap_info_struct *p, swp_entry_t entry)
 	count = p->swap_map[offset];
 	VM_BUG_ON(count != SWAP_HAS_CACHE);
 	p->swap_map[offset] = 0;
-	dec_cluster_info_page(p, p->clusters, offset);
+	dec_cluster_info_page(p, &p->clusters, offset);
 	unlock_cluster(ci);
 
 	mem_cgroup_uncharge_swap(entry, 1);
@@ -2456,7 +2460,7 @@ static int swap_node(struct swap_info_struct *p)
 
 static void setup_swap_info(struct swap_info_struct *p, int prio,
 			    unsigned char *swap_map,
-			    struct swap_cluster_info *clusters)
+			    struct xarray *clusters)
 {
 	int i;
 
@@ -2480,7 +2484,7 @@ static void setup_swap_info(struct swap_info_struct *p, int prio,
 		}
 	}
 	p->swap_map = swap_map;
-	p->clusters = clusters;
+	p->clusters = *clusters;
 }
 
 static void _enable_swap_info(struct swap_info_struct *p)
@@ -2506,7 +2510,7 @@ static void _enable_swap_info(struct swap_info_struct *p)
 
 static void enable_swap_info(struct swap_info_struct *p, int prio,
 				unsigned char *swap_map,
-				struct swap_cluster_info *cluster_info,
+				struct xarray *cluster_info,
 				unsigned long *frontswap_map)
 {
 	frontswap_init(p->type, frontswap_map);
@@ -2531,7 +2535,7 @@ static void reinsert_swap_info(struct swap_info_struct *p)
 {
 	spin_lock(&swap_lock);
 	spin_lock(&p->lock);
-	setup_swap_info(p, p->prio, p->swap_map, p->clusters);
+	setup_swap_info(p, p->prio, p->swap_map, &p->clusters);
 	_enable_swap_info(p);
 	spin_unlock(&p->lock);
 	spin_unlock(&swap_lock);
@@ -2552,7 +2556,6 @@ SYSCALL_DEFINE1(swapoff, const char __user *, specialfile)
 {
 	struct swap_info_struct *p = NULL;
 	unsigned char *swap_map;
-	struct swap_cluster_info *clusters;
 	unsigned long *frontswap_map;
 	struct file *swap_file, *victim;
 	struct address_space *mapping;
@@ -2676,8 +2679,10 @@ SYSCALL_DEFINE1(swapoff, const char __user *, specialfile)
 	p->max = 0;
 	swap_map = p->swap_map;
 	p->swap_map = NULL;
-	clusters = p->clusters;
-	p->clusters = NULL;
+	if (p->flags & SWP_SOLIDSTATE) {
+		p->flags &= ~SWP_SOLIDSTATE;
+		xa_destroy(&p->clusters);
+	}
 	frontswap_map = frontswap_map_get(p);
 	spin_unlock(&p->lock);
 	spin_unlock(&swap_lock);
@@ -2690,7 +2695,6 @@ SYSCALL_DEFINE1(swapoff, const char __user *, specialfile)
 	free_percpu(p->cluster_next_cpu);
 	p->cluster_next_cpu = NULL;
 	vfree(swap_map);
-	kvfree(clusters);
 	kvfree(frontswap_map);
 	/* Destroy swap account information */
 	swap_cgroup_swapoff(p->type);
@@ -3054,7 +3058,7 @@ static unsigned long read_swap_header(struct swap_info_struct *p,
 static int setup_swap_map_and_extents(struct swap_info_struct *p,
 					union swap_header *swap_header,
 					unsigned char *swap_map,
-					struct swap_cluster_info *cluster_info,
+					struct xarray *clusters,
 					unsigned long maxpages,
 					sector_t *span)
 {
@@ -3081,13 +3085,13 @@ static int setup_swap_map_and_extents(struct swap_info_struct *p,
 			 * Haven't marked the cluster free yet, no list
 			 * operation involved
 			 */
-			inc_cluster_info_page(p, cluster_info, page_nr);
+			inc_cluster_info_page(p, clusters, page_nr);
 		}
 	}
 
 	/* Haven't marked the cluster free yet, no list operation involved */
 	for (i = maxpages; i < round_up(maxpages, SWAPFILE_CLUSTER); i++)
-		inc_cluster_info_page(p, cluster_info, i);
+		inc_cluster_info_page(p, clusters, i);
 
 	if (nr_good_pages) {
 		swap_map[0] = SWAP_MAP_BAD;
@@ -3095,7 +3099,7 @@ static int setup_swap_map_and_extents(struct swap_info_struct *p,
 		 * Not mark the cluster free yet, no list
 		 * operation involved
 		 */
-		inc_cluster_info_page(p, cluster_info, 0);
+		inc_cluster_info_page(p, clusters, 0);
 		p->max = maxpages;
 		p->pages = nr_good_pages;
 		nr_extents = setup_swap_extents(p, span);
@@ -3108,12 +3112,12 @@ static int setup_swap_map_and_extents(struct swap_info_struct *p,
 		return -EINVAL;
 	}
 
-	if (!cluster_info)
+	if (!(p->flags & SWP_SOLIDSTATE))
 		return nr_extents;
 
 
 	/*
-	 * Reduce false cache line sharing between cluster_info and
+	 * Reduce false cache line sharing between clusters and
 	 * sharing same address space.
 	 */
 	for (k = 0; k < SWAP_CLUSTER_COLS; k++) {
@@ -3122,10 +3126,10 @@ static int setup_swap_map_and_extents(struct swap_info_struct *p,
 			idx = i * SWAP_CLUSTER_COLS + j;
 			if (idx >= nr_clusters)
 				continue;
-			if (cluster_count(&cluster_info[idx]))
+			if (cluster_count(xa_load(clusters, idx)))
 				continue;
-			cluster_set_flag(&cluster_info[idx], CLUSTER_FLAG_FREE);
-			cluster_list_add_tail(&p->free_clusters, cluster_info,
+			cluster_set_flag(xa_load(clusters, idx), CLUSTER_FLAG_FREE);
+			cluster_list_add_tail(&p->free_clusters, clusters,
 					      idx);
 		}
 	}
@@ -3157,13 +3161,14 @@ SYSCALL_DEFINE2(swapon, const char __user *, specialfile, int, swap_flags)
 	union swap_header *swap_header;
 	int nr_extents;
 	sector_t span;
-	unsigned long maxpages;
+	unsigned long maxpages, nr_cluster, ci;
 	unsigned char *swap_map = NULL;
-	struct swap_cluster_info *clusters = NULL;
+	struct xarray clusters;
 	unsigned long *frontswap_map = NULL;
 	struct page *page = NULL;
 	struct inode *inode = NULL;
 	bool inced_nr_rotate_swap = false;
+	bool clusters_ready = false;
 
 	if (swap_flags & ~SWAP_FLAGS_VALID)
 		return -EINVAL;
@@ -3242,7 +3247,6 @@ SYSCALL_DEFINE2(swapon, const char __user *, specialfile, int, swap_flags)
 
 	if (p->bdev && blk_queue_nonrot(bdev_get_queue(p->bdev))) {
 		int cpu;
-		unsigned long ci, nr_cluster;
 
 		p->flags |= SWP_SOLIDSTATE;
 		p->cluster_next_cpu = alloc_percpu(unsigned int);
@@ -3260,15 +3264,33 @@ SYSCALL_DEFINE2(swapon, const char __user *, specialfile, int, swap_flags)
 		}
 		nr_cluster = DIV_ROUND_UP(maxpages, SWAPFILE_CLUSTER);
 
-		clusters = kvcalloc(nr_cluster, sizeof(*clusters),
-					GFP_KERNEL);
-		if (!clusters) {
-			error = -ENOMEM;
-			goto bad_swap_unlock_inode;
-		}
+		xa_init(&clusters);
+		for (ci = 0; ci < nr_cluster; ci++) {
+			struct swap_cluster_info *this_ci;
+			int ret;
 
-		for (ci = 0; ci < nr_cluster; ci++)
-			spin_lock_init(&((clusters + ci)->lock));
+			this_ci = kmalloc(sizeof(*this_ci), GFP_KERNEL);
+			if (!this_ci) {
+				for (; ci >= 0; ci--)
+					kfree(xa_load(&clusters, ci));
+				xa_destroy(&clusters);
+				error = -ENOMEM;
+				goto bad_swap_unlock_inode;
+			}
+
+			spin_lock_init(&this_ci->lock);
+
+			ret = xa_err(xa_store(&clusters, ci, this_ci, GFP_KERNEL));
+			if (ret) {
+				for (; ci >= 0; ci--)
+					kfree(xa_load(&clusters, ci));
+				xa_destroy(&clusters);
+				error = -ret;
+				goto bad_swap_unlock_inode;
+			}
+
+			clusters_ready = true;
+		}
 
 		p->percpu_cluster = alloc_percpu(struct percpu_cluster);
 		if (!p->percpu_cluster) {
@@ -3290,7 +3312,7 @@ SYSCALL_DEFINE2(swapon, const char __user *, specialfile, int, swap_flags)
 		goto bad_swap_unlock_inode;
 
 	nr_extents = setup_swap_map_and_extents(p, swap_header, swap_map,
-		clusters, maxpages, &span);
+		&clusters, maxpages, &span);
 	if (unlikely(nr_extents < 0)) {
 		error = nr_extents;
 		goto bad_swap_unlock_inode;
@@ -3351,7 +3373,7 @@ SYSCALL_DEFINE2(swapon, const char __user *, specialfile, int, swap_flags)
 	if (swap_flags & SWAP_FLAG_PREFER)
 		prio =
 		  (swap_flags & SWAP_FLAG_PRIO_MASK) >> SWAP_FLAG_PRIO_SHIFT;
-	enable_swap_info(p, prio, swap_map, clusters, frontswap_map);
+	enable_swap_info(p, prio, swap_map, &clusters, frontswap_map);
 
 	pr_info("Adding %uk swap on %s.  Priority:%d extents:%d across:%lluk %s%s%s%s%s\n",
 		p->pages<<(PAGE_SHIFT-10), name->name, p->prio,
@@ -3373,6 +3395,12 @@ free_swap_address_space:
 bad_swap_unlock_inode:
 	inode_unlock(inode);
 bad_swap:
+	if (clusters_ready) {
+		for (ci = 0; ci < nr_cluster; ci++)
+			kfree(xa_load(&clusters, ci));
+		xa_destroy(&clusters);
+	}
+
 	free_percpu(p->percpu_cluster);
 	p->percpu_cluster = NULL;
 	free_percpu(p->cluster_next_cpu);
@@ -3389,7 +3417,6 @@ bad_swap:
 	p->flags = 0;
 	spin_unlock(&swap_lock);
 	vfree(swap_map);
-	kvfree(clusters);
 	kvfree(frontswap_map);
 	if (inced_nr_rotate_swap)
 		atomic_dec(&nr_rotate_swap);
