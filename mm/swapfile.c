@@ -3014,8 +3014,10 @@ static unsigned long read_swap_header(struct swap_info_struct *p,
 		swab32s(&swap_header->info.version);
 		swab32s(&swap_header->info.last_page);
 		swab32s(&swap_header->info.nr_badpages);
-		if (swap_header->info.nr_badpages > MAX_SWAP_BADPAGES)
+		if (swap_header->info.nr_badpages > MAX_SWAP_BADPAGES) {
+			pr_warn("Swap area has too many bad pages\n");
 			return 0;
+		}
 		for (i = 0; i < swap_header->info.nr_badpages; i++)
 			swab32s(&swap_header->info.badpages[i]);
 	}
@@ -3056,10 +3058,14 @@ static unsigned long read_swap_header(struct swap_info_struct *p,
 		pr_warn("Swap area shorter than signature indicates\n");
 		return 0;
 	}
-	if (swap_header->info.nr_badpages && S_ISREG(inode->i_mode))
+	if (swap_header->info.nr_badpages && S_ISREG(inode->i_mode)) {
+		pr_warn("Swap area has too many bad pages\n");
 		return 0;
-	if (swap_header->info.nr_badpages > MAX_SWAP_BADPAGES)
+	}
+	if (swap_header->info.nr_badpages > MAX_SWAP_BADPAGES) {
+		pr_warn("Swap area has too many bad pages\n");
 		return 0;
+	}
 
 	return maxpages;
 }
