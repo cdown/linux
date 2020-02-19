@@ -36,7 +36,7 @@ struct swap_cgroup {
 /*
  * allocate buffer for swap_cgroup.
  */
-static int swap_cgroup_prepare(int type)
+static int swap_cgroup_prepare(int type, unsigned long start_index)
 {
 	struct page *page;
 	struct swap_cgroup_ctrl *ctrl;
@@ -44,7 +44,7 @@ static int swap_cgroup_prepare(int type)
 
 	ctrl = &swap_cgroup_ctrl[type];
 
-	for (idx = 0; idx < ctrl->length; idx++) {
+	for (idx = start_index; idx < ctrl->length; idx++) {
 		page = alloc_page(GFP_KERNEL | __GFP_ZERO);
 		if (!page)
 			goto not_enough_page;
@@ -56,7 +56,7 @@ static int swap_cgroup_prepare(int type)
 	return 0;
 not_enough_page:
 	max = idx;
-	for (idx = 0; idx < max; idx++)
+	for (idx = start_index; idx < max; idx++)
 		__free_page(ctrl->map[idx]);
 
 	return -ENOMEM;
@@ -183,7 +183,7 @@ int swap_cgroup_swapon(int type, unsigned long max_pages)
 	ctrl->length = length;
 	ctrl->map = array;
 	spin_lock_init(&ctrl->lock);
-	if (swap_cgroup_prepare(type)) {
+	if (swap_cgroup_prepare(type, 0)) {
 		/* memory shortage */
 		ctrl->map = NULL;
 		ctrl->length = 0;
@@ -195,9 +195,57 @@ int swap_cgroup_swapon(int type, unsigned long max_pages)
 
 	return 0;
 nomem:
-	pr_info("couldn't allocate enough memory for swap_cgroup\n");
+	pr_warn("couldn't allocate enough memory for swap_cgroup\n");
 	pr_info("swap_cgroup can be disabled by swapaccount=0 boot option\n");
 	return -ENOMEM;
+}
+
+int swap_cgroup_swapextend(int type, unsigned long max_pages)
+{
+	void *new_array, *old_array;
+	unsigned long new_array_size;
+	unsigned long new_length, old_length;
+	struct swap_cgroup_ctrl *ctrl;
+
+	new_length = DIV_ROUND_UP(max_pages, SC_PER_PAGE);
+	new_array_size = new_length * sizeof(void *);
+
+	new_array = vzalloc(new_array_size);
+	if (!new_array)
+		return -ENOMEM;
+
+	ctrl = &swap_cgroup_ctrl[type];
+
+	mutex_lock(&swap_cgroup_mutex);
+	spin_lock(&ctrl->lock);
+
+	memcpy(new_array, ctrl->map, ctrl->length * sizeof(void *));
+
+	old_length = ctrl->length;
+	ctrl->length = new_length;
+	old_array = ctrl->map;
+	ctrl->map = new_array;
+	spin_unlock(&ctrl->lock);
+
+	if (swap_cgroup_prepare(type, old_length)) {
+		/*
+		 * Out of memory, but the old allocations are still intact, so
+		 * just roll back
+		 */
+		spin_lock(&ctrl->lock);
+		ctrl->map = old_array;
+		ctrl->length = old_length;
+		spin_unlock(&ctrl->lock);
+		mutex_unlock(&swap_cgroup_mutex);
+		vfree(new_array);
+		return -ENOMEM;
+	}
+
+	mutex_unlock(&swap_cgroup_mutex);
+
+	vfree(old_array);
+
+	return 0;
 }
 
 void swap_cgroup_swapoff(int type)

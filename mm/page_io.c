@@ -171,8 +171,7 @@ static int generic_allocate_swap_extents(struct swap_info_struct *sis,
 	probe_block = start_probe_block;
 	page_no = start_page_no;
 	last_block = i_size_read(inode) >> blkbits;
-	while ((probe_block + blocks_per_page) <= last_block &&
-			page_no < sis->max) {
+	while ((probe_block + blocks_per_page) <= last_block) {
 		unsigned block_in_page;
 		sector_t first_block;
 
@@ -247,6 +246,24 @@ int generic_swapfile_activate(struct swap_info_struct *sis,
 				sector_t *span)
 {
 	return generic_allocate_swap_extents(sis, swap_file, span, 0, 0);
+}
+
+int generic_swapfile_extend(struct swap_info_struct *sis,
+			    struct file *swap_file,
+			    sector_t *span)
+{
+	struct address_space *mapping = swap_file->f_mapping;
+	struct inode *inode = mapping->host;
+	unsigned blocks_per_page;
+	sector_t start_probe_block;
+	unsigned blkbits;
+
+	blkbits = inode->i_blkbits;
+	blocks_per_page = PAGE_SIZE >> blkbits;
+	start_probe_block = sis->max * blocks_per_page;
+
+	return generic_allocate_swap_extents(sis, swap_file, span, sis->max,
+					     start_probe_block);
 }
 
 /*

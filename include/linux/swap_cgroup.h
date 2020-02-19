@@ -12,6 +12,7 @@ extern unsigned short swap_cgroup_record(swp_entry_t ent, unsigned short id,
 					 unsigned int nr_ents);
 extern unsigned short lookup_swap_cgroup_id(swp_entry_t ent);
 extern int swap_cgroup_swapon(int type, unsigned long max_pages);
+extern int swap_cgroup_swapextend(int type, unsigned long max_pages);
 extern void swap_cgroup_swapoff(int type);
 
 #else
@@ -31,6 +32,12 @@ unsigned short lookup_swap_cgroup_id(swp_entry_t ent)
 
 static inline int
 swap_cgroup_swapon(int type, unsigned long max_pages)
+{
+	return 0;
+}
+
+static inline int
+swap_cgroup_swapextend(int type, unsigned long max_pages)
 {
 	return 0;
 }
