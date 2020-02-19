@@ -3040,11 +3040,30 @@ static unsigned long read_swap_header(struct swap_info_struct *p,
 	p->cluster_nr = 0;
 
 	maxpages = max_swapfile_size();
-	last_page = swap_header->info.last_page;
+	swapfilepages = i_size_read(inode) >> PAGE_SHIFT;
+
+	/*
+	 * For regular files we just use the entirety of the available space.
+	 * This avoids having to mess around persisting the header's last_page
+	 * on swapextend, since swapextend is only allowed on regular files.
+	 *
+	 * This is ok because we do the extent allocation ourselves based on the
+	 * number of possible pages: extents are not created up-front at
+	 * mkswap(8) time.
+	 *
+	 * Eventually we can probably move to just ignoring the swap header
+	 * entirely for regular files.
+	 */
+	if (swapfilepages && S_ISREG(inode->i_mode)) {
+		last_page = swapfilepages - 1;
+	} else
+		last_page = swap_header->info.last_page;
+
 	if (!last_page) {
 		pr_warn("Empty swap-file\n");
 		return 0;
 	}
+
 	if (last_page > maxpages) {
 		pr_warn("Truncating oversized swap area, only using %luk out of %luk\n",
 			maxpages << (PAGE_SHIFT - 10),
@@ -3060,8 +3079,7 @@ static unsigned long read_swap_header(struct swap_info_struct *p,
 
 	if (!maxpages)
 		return 0;
-	swapfilepages = i_size_read(inode) >> PAGE_SHIFT;
-	if (swapfilepages && maxpages > swapfilepages) {
+	if (maxpages > swapfilepages) {
 		pr_warn("Swap area shorter than signature indicates\n");
 		return 0;
 	}
