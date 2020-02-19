@@ -410,6 +410,8 @@ struct address_space_operations {
 	/* swapfile support */
 	int (*swap_activate)(struct swap_info_struct *sis, struct file *file,
 				sector_t *span);
+	int (*swap_extend)(struct swap_info_struct *sis, struct file *file,
+				sector_t *span);
 	void (*swap_deactivate)(struct file *file);
 };
 

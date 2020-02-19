@@ -178,6 +178,7 @@ enum {
 	SWP_VALID	= (1 << 13),	/* swap is valid to be operated on? */
 					/* add others here before... */
 	SWP_SCANNING	= (1 << 14),	/* refcount in scan_swap_map */
+	SWP_EXTENDING	= (1 << 15),	/* extend in progress */
 };
 
 #define SWAP_CLUSTER_MAX 32UL
@@ -403,6 +404,8 @@ int add_swap_extent(struct swap_info_struct *sis, unsigned long start_page,
 		unsigned long nr_pages, sector_t start_block);
 int generic_swapfile_activate(struct swap_info_struct *, struct file *,
 		sector_t *);
+int generic_swapfile_extend(struct swap_info_struct *, struct file *,
+		sector_t *);
 
 /* linux/mm/swap_state.c */
 /* One swap address space for each 64M swap space */
@@ -476,7 +479,8 @@ extern struct swap_info_struct *swp_swap_info(swp_entry_t entry);
 extern bool reuse_swap_page(struct page *, int *);
 extern int try_to_free_swap(struct page *);
 struct backing_dev_info;
-extern int init_swap_address_space(unsigned int type, unsigned long nr_pages);
+extern int init_swap_address_space(unsigned int type, unsigned long nr_pages,
+				   bool allow_update);
 extern void exit_swap_address_space(unsigned int type);
 extern struct swap_info_struct *get_swap_device(swp_entry_t entry);
 

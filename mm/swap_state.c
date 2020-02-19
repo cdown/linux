@@ -612,16 +612,31 @@ skip:
 	return read_swap_cache_async(entry, gfp_mask, vma, addr, do_poll);
 }
 
-int init_swap_address_space(unsigned int type, unsigned long nr_pages)
+int init_swap_address_space(unsigned int type, unsigned long nr_pages,
+			    bool allow_update)
 {
 	struct address_space *spaces, *space;
-	unsigned int i, nr;
+	unsigned int i = 0, nr;
 
 	nr = DIV_ROUND_UP(nr_pages, SWAP_ADDRESS_SPACE_PAGES);
 	spaces = kvcalloc(nr, sizeof(struct address_space), GFP_KERNEL);
 	if (!spaces)
 		return -ENOMEM;
-	for (i = 0; i < nr; i++) {
+
+	if (allow_update && swapper_spaces[type]) {
+		/* Copy over the old spaces intact */
+		i = nr_swapper_spaces[type];
+		memcpy(spaces, swapper_spaces[type],
+		       i * sizeof(struct address_space));
+	}
+
+	/*
+	 * You won't allow an update, but there's already something here? That's
+	 * not good, and probably indicates a bug in swap extension...
+	 */
+	BUG_ON(!allow_update && swapper_spaces[type]);
+
+	for (; i < nr; i++) {
 		space = spaces + i;
 		xa_init_flags(&space->i_pages, XA_FLAGS_LOCK_IRQ);
 		atomic_set(&space->i_mmap_writable, 0);

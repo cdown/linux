@@ -364,6 +364,7 @@
 441	common	watch_sb		sys_watch_sb
 442	common	fsinfo			sys_fsinfo
 443	64	process_madvise		sys_process_madvise
+500	common	swapextend		sys_swapextend
 
 #
 # x32-specific system call numbers start at 512 to avoid cache impact

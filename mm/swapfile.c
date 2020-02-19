@@ -51,6 +51,7 @@ static sector_t map_swap_entry(swp_entry_t, struct block_device**);
 static void spread_cluster_info_cachelines(struct swap_info_struct *sis,
 					   unsigned long maxpages,
 					   struct xarray *clusters);
+static int claim_swapfile(struct swap_info_struct *p, struct inode *inode);
 
 DEFINE_SPINLOCK(swap_lock);
 static unsigned int nr_swapfiles;
@@ -2456,6 +2457,51 @@ static int setup_swap_extents_activate(struct swap_info_struct *sis,
 	return generic_swapfile_activate(sis, swap_file, span);
 }
 
+static int setup_swap_extents_extend(struct swap_info_struct *sis,
+				     sector_t *span)
+{
+	struct file *swap_file = sis->swap_file;
+	struct address_space *mapping = swap_file->f_mapping;
+	struct inode *inode = mapping->host;
+	int nr_extents;
+	unsigned blocks_per_page;
+	sector_t start_block;
+	unsigned blkbits;
+	unsigned long start_page, total_pages;
+
+	if (!S_ISREG(sis->swap_file->f_inode->i_mode)) {
+		pr_err("swapextend unsupported on non-regular files\n");
+		return -EOPNOTSUPP;
+	} else if (sis->flags & SWP_ACTIVATED) {
+		if (!mapping->a_ops->swap_extend) {
+			pr_err("swapextend unsupported by filesystem\n");
+			return -EOPNOTSUPP;
+		}
+		nr_extents = mapping->a_ops->swap_extend(sis, swap_file, span);
+		if (nr_extents < 0)
+			return nr_extents;
+	} else if (sis->flags & SWP_FS) {
+		blkbits = inode->i_blkbits;
+		blocks_per_page = PAGE_SIZE >> blkbits;
+		start_page = sis->max + 1;
+		total_pages = ALIGN_DOWN(i_size_read(inode), PAGE_SIZE);
+		start_block = start_page * blocks_per_page;
+
+		nr_extents = add_swap_extent(sis, start_page,
+					     total_pages - start_page,
+					     start_block);
+		if (nr_extents < 0)
+			return nr_extents;
+
+		*span = total_pages - 1;
+	} else {
+		nr_extents = generic_swapfile_extend(sis, swap_file, span);
+	}
+
+	return nr_extents;
+}
+
+
 static int swap_node(struct swap_info_struct *p)
 {
 	struct block_device *bdev;
@@ -2603,6 +2649,334 @@ out_putname:
 	putname(swap_filename);
 
 	return ret;
+}
+
+static void lock_all_clusters(unsigned int pages, struct xarray *clusters) {
+	unsigned long current_nr_cis, idx;
+	struct swap_cluster_info *ci;
+
+	current_nr_cis = DIV_ROUND_UP(pages, SWAPFILE_CLUSTER);
+	for (idx = 0; idx < current_nr_cis; idx++) {
+		ci = xa_load(clusters, idx);
+		spin_lock(&(ci->lock));
+	}
+}
+
+static void unlock_all_clusters(unsigned int pages, struct xarray *clusters) {
+	unsigned long current_nr_cis, idx;
+	struct swap_cluster_info *ci;
+
+	current_nr_cis = DIV_ROUND_UP(pages, SWAPFILE_CLUSTER);
+	for (idx = 0; idx < current_nr_cis; idx++) {
+		ci = xa_load(clusters, idx);
+		spin_unlock(&(ci->lock));
+	}
+}
+
+/*
+ * desired_size == 0 indicates extending to fill as much space provided by the
+ * inode as possible
+ *
+ * Constraints:
+ *
+ * - Must have CAP_SYS_ADMIN (EPERM)
+ * - file must already be a swap device (EINVAL)
+ * - file must be regular, ie. not SWP_BLKDEV (EINVAL)
+ * - swap entry must not use frontswap (EINVAL)
+ * - desired_size must be positive (EINVAL)
+ * - desired_size must not be bigger than the file size to swap to (EFBIG)
+ * - desired_pages must not be fewer than current number of pages (EINVAL)
+ */
+SYSCALL_DEFINE2(swapextend, const char __user *, filename, loff_t, desired_size)
+{
+	int err;
+	struct swap_info_struct *sis = NULL;
+	unsigned int desired_pages, current_pages, current_highest_bit;
+	loff_t current_size;
+	unsigned char *new_swap_map = NULL, *old_swap_map;
+	int ret = 0;
+	struct filename *name;
+	const char *hrname;
+	sector_t span;
+	struct inode *inode;
+	unsigned long desired_nr_cis, current_nr_cis, idx;
+	unsigned long i;
+
+
+	if (!capable(CAP_SYS_ADMIN)) {
+		ret = -EPERM;
+		goto out;
+	}
+
+	if (desired_size < 0) {
+		ret = -EINVAL;
+		goto out;
+	}
+
+	err = find_swap_entry(filename, &sis);
+	if (err) {
+		ret = err;
+		goto out;
+	}
+
+	spin_lock(&sis->lock);
+	if (sis->flags & SWP_EXTENDING) {
+		spin_unlock(&sis->lock);
+		return -EINPROGRESS;
+	}
+	spin_unlock(&sis->lock);
+
+	inode = sis->swap_file->f_mapping->host;
+
+	ret = claim_swapfile(sis, inode);
+	if (ret)
+		goto out;
+
+	/* We don't have to worry about badpages and other shenanigans */
+	if (!S_ISREG(inode->i_mode)) {
+		ret = -EINVAL;
+		goto out_unlock_inode;
+	}
+
+	inode_lock(inode);
+
+#ifdef CONFIG_FRONTSWAP
+	if (sis->frontswap_map) {
+		ret = -EINVAL;
+		goto out_unlock_inode;
+	}
+#endif
+
+	current_size = i_size_read(inode);
+
+	if (desired_size == 0)
+		desired_size = min_t(unsigned long long, current_size,
+				     max_swapfile_size() << PAGE_SHIFT);
+
+	if (desired_size > current_size) {
+		ret = -EFBIG;
+		goto out_unlock_inode;
+	}
+
+	desired_size = PAGE_ALIGN(desired_size);
+
+	/* one page is sacrificed for the header */
+	desired_pages = (desired_size >> PAGE_SHIFT) - 1;
+
+	if (desired_pages > max_swapfile_size()) {
+		ret = -EINVAL;
+		goto out_unlock_inode;
+	}
+
+	/*
+	 * With S_ISREG, sis->pages is always the number of allocated extents,
+	 * none of this badpages bollocks
+	 */
+	spin_lock(&sis->lock);
+	current_pages = sis->pages;
+	spin_unlock(&sis->lock);
+
+	if (desired_pages < current_pages) {
+		ret = -EINVAL;
+		goto out_unlock_inode;
+	}
+
+	/* Nothing to do */
+	if (desired_pages == current_pages)
+		goto out_unlock_inode;
+
+	/*
+	 * Stop new users by marking so that no new activity happens on this
+	 * swap file. Will later be reinstated by _enable_swap_info()
+	 */
+	del_from_avail_list(sis);
+	spin_lock(&swap_lock);
+	spin_lock(&sis->lock);
+	plist_del(&sis->list, &swap_active_head);
+	atomic_long_sub(sis->pages, &nr_swap_pages);
+	total_swap_pages -= sis->pages;
+	sis->flags &= (~SWP_WRITEOK & ~SWP_VALID);
+	sis->flags |= SWP_EXTENDING;
+	spin_unlock(&sis->lock);
+	spin_unlock(&swap_lock);
+
+	/* Wait for existing swap activities to complete */
+	synchronize_rcu();
+
+	/*
+	 * Wait for swp_scan_map to finish. Speed them up by shrinking the range
+	 * of pages to scan to 0.
+	 */
+	spin_lock(&swap_lock);
+	spin_lock(&sis->lock);
+	current_highest_bit = sis->highest_bit;
+	sis->highest_bit = 0;
+	while (sis->flags & SWP_SCANNING) {
+		spin_unlock(&sis->lock);
+		spin_unlock(&swap_lock);
+		cpu_relax();
+		cond_resched();
+		spin_lock(&swap_lock);
+		spin_lock(&sis->lock);
+	}
+	sis->highest_bit = current_highest_bit;
+	spin_unlock(&sis->lock);
+	spin_unlock(&swap_lock);
+
+
+	/*
+	 * From here we don't need to worry about the swap_info_struct lock
+	 * since it's marked invalid
+	 */
+
+	/* Swap out the old swap_map with the new one */
+	new_swap_map = vzalloc(desired_pages);
+	if (!new_swap_map) {
+		ret = -ENOMEM;
+		goto out_make_swap_cromulent;
+	}
+
+
+	/* Until we're ready to swap out the swap map, freeze new swap work */
+	spin_lock(&swap_lock);
+	spin_lock(&sis->lock);
+
+	/*
+	 * We might only take the cluster lock in lock_cluster_or_swap_info
+	 * callers, which is fine in the normal case where we are just mutating
+	 * swap_map, but not fine in the case that the swap_map pointer itself
+	 * moves. Lock all the existing clusters to avoid new swap_map mutations
+	 * getting lost.
+	 */
+	if (sis->flags & SWP_SOLIDSTATE)
+		lock_all_clusters(sis->pages, &sis->clusters);
+
+	memcpy(new_swap_map, sis->swap_map, sis->max);
+	memset(new_swap_map + sis->max, 0, desired_pages - sis->max);
+
+	/*
+	 * new_swap_map ready
+	 * max, pages, highest_bit will be updated by extent allocator
+	 */
+
+	old_swap_map = sis->swap_map;
+	sis->swap_map = new_swap_map;
+
+	if (sis->flags & SWP_SOLIDSTATE)
+		unlock_all_clusters(sis->pages, &sis->clusters);
+
+	spin_unlock(&sis->lock);
+	spin_unlock(&swap_lock);
+
+	if (sis->flags & SWP_SOLIDSTATE) {
+		/*
+		 * SSD. We need to create new clusters for the additional pages
+		 * in order to be able to get to the new pages.
+		 */
+		desired_nr_cis = DIV_ROUND_UP(desired_pages, SWAPFILE_CLUSTER);
+		current_nr_cis = DIV_ROUND_UP(sis->pages, SWAPFILE_CLUSTER);
+
+		for (idx = current_nr_cis; idx < desired_nr_cis; idx++) {
+			struct swap_cluster_info *this_ci;
+			int ret;
+
+			this_ci = kmalloc(sizeof(*this_ci), GFP_KERNEL);
+			if (!this_ci) {
+				for (; idx >= current_nr_cis; idx--)
+					kfree(xa_load(&sis->clusters, idx));
+				ret = -ENOMEM;
+				goto rollback;
+			}
+
+			spin_lock_init(&this_ci->lock);
+
+			ret = xa_err(xa_store(&sis->clusters, idx, this_ci, GFP_KERNEL));
+			if (ret) {
+				for (; idx >= current_nr_cis; idx--)
+					kfree(xa_load(&sis->clusters, idx));
+				ret = -ret;
+				goto rollback;
+			}
+		}
+
+		/*
+		 * Readmit the pages which previously were only padding for
+		 * SWAPFILE_CLUSTER
+		 */
+		for (i = current_pages; i < round_up(current_pages, SWAPFILE_CLUSTER); i++)
+			dec_cluster_info_page(sis, &sis->clusters, i);
+
+		/*
+		 * Fill in the pages that are just padding for SWAPFILE_CLUSTER
+		 */
+		for (i = desired_pages; i < round_up(desired_pages, SWAPFILE_CLUSTER); i++)
+			inc_cluster_info_page(sis, &sis->clusters, i);
+
+		spin_lock(&sis->lock);
+		spread_cluster_info_cachelines(sis, desired_pages,
+					       &sis->clusters);
+		spin_unlock(&sis->lock);
+	}
+
+	ret = setup_swap_extents_extend(sis, &span);
+	if (ret < 0) {
+		pr_err("swapextend: can't allocate extents: %d\n", ret);
+		goto rollback;
+	}
+
+	ret = swap_cgroup_swapextend(sis->type, desired_pages);
+	if (ret)
+		goto rollback;
+
+	/*
+	 * If this fails we didn't update the address space map, so no
+	 * address space specific rollback/cleanup to do
+	 */
+	ret = init_swap_address_space(sis->type, desired_pages, true);
+	if (ret)
+		goto rollback;
+
+	name = getname(filename);
+	if (IS_ERR(name))
+		hrname = "[failed to get name]";
+	else
+		hrname = name->name;
+
+	pr_info("Extending %uk swap on %s to %uk, across: %lluk\n",
+		current_pages<<(PAGE_SHIFT-10), hrname,
+		sis->pages<<(PAGE_SHIFT-10),
+		(unsigned long long)span<<(PAGE_SHIFT-10));
+
+	if (!IS_ERR(name))
+		putname(name);
+
+	atomic_inc(&proc_poll_event);
+	wake_up_interruptible(&proc_poll_wait);
+
+	vfree(old_swap_map);
+
+out_make_swap_cromulent:
+	spin_lock(&swap_lock);
+	sis->flags &= ~SWP_EXTENDING;
+	_enable_swap_info(sis);
+	spin_unlock(&swap_lock);
+
+out_unlock_inode:
+        inode_unlock(inode);
+
+out:
+	return ret;
+
+rollback:
+	spin_lock(&swap_lock);
+
+	if (new_swap_map)
+		sis->swap_map = old_swap_map;
+
+	spin_unlock(&swap_lock);
+	vfree(new_swap_map);
+	goto out_make_swap_cromulent;
+
 }
 
 SYSCALL_DEFINE1(swapoff, const char __user *, specialfile)
@@ -3414,7 +3788,7 @@ SYSCALL_DEFINE2(swapon, const char __user *, specialfile, int, swap_flags)
 		}
 	}
 
-	error = init_swap_address_space(p->type, maxpages);
+	error = init_swap_address_space(p->type, maxpages, false);
 	if (error)
 		goto bad_swap_unlock_inode;
 

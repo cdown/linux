@@ -447,3 +447,4 @@
 441	i386	watch_sb		sys_watch_sb
 442	i386	fsinfo			sys_fsinfo
 443	i386	process_madvise		sys_process_madvise		compat_sys_process_madvise
+500	i386	swapextend		sys_swapextend
