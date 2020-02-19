@@ -961,6 +961,30 @@ static u64 get_extent_allocation_hint(struct inode *inode, u64 start,
 }
 
 /*
+ * Assuming a contiguous range of existing extents inside the inode, return the
+ * next byte which should have an extent created.
+ */
+static int __swap_get_next_extent_byte(struct inode *inode, u64 isize,
+				       u64 *next_loc)
+{
+	struct extent_map_tree *em_tree = &BTRFS_I(inode)->extent_tree;
+	struct extent_map *em;
+	int ret = 0;
+
+	read_lock(&em_tree->lock);
+	em = search_last_extent_mapping(em_tree, 0, isize);
+	if (!em) {
+		read_unlock(&em_tree->lock);
+		return -EINVAL;
+	}
+
+	*next_loc = em->block_start + em->block_len;
+
+	read_unlock(&em_tree->lock);
+	return ret;
+}
+
+/*
  * when extent_io.c finds a delayed allocation range in the file,
  * the call backs end up in this code.  The basic idea is to
  * allocate extents on disk for the range, and create ordered data structs
@@ -9845,21 +9869,9 @@ static void btrfs_swap_deactivate(struct file *file)
 	atomic_dec(&BTRFS_I(inode)->root->nr_swapfiles);
 }
 
-static int btrfs_swap_activate(struct swap_info_struct *sis, struct file *file,
-			       sector_t *span)
-{
-	struct inode *inode = file_inode(file);
+static int __btrfs_swap_validate(struct inode *inode) {
 	struct btrfs_fs_info *fs_info = BTRFS_I(inode)->root->fs_info;
-	struct extent_io_tree *io_tree = &BTRFS_I(inode)->io_tree;
-	struct extent_state *cached_state = NULL;
-	struct extent_map *em = NULL;
-	struct btrfs_device *device = NULL;
-	struct btrfs_swap_info bsi = {
-		.lowest_ppage = (sector_t)-1ULL,
-	};
 	int ret = 0;
-	u64 isize;
-	u64 start;
 
 	/*
 	 * If the swap file was just created, make sure delalloc is done. If the
@@ -9900,22 +9912,28 @@ static int btrfs_swap_activate(struct swap_info_struct *sis, struct file *file,
 	   "cannot activate swapfile while exclusive operation is running");
 		return -EBUSY;
 	}
-	/*
-	 * Snapshots can create extents which require COW even if NODATACOW is
-	 * set. We use this counter to prevent snapshots. We must increment it
-	 * before walking the extents because we don't want a concurrent
-	 * snapshot to run after we've already checked the extents.
-	 */
-	atomic_inc(&BTRFS_I(inode)->root->nr_swapfiles);
 
-	isize = ALIGN_DOWN(inode->i_size, fs_info->sectorsize);
+	return 0;
+}
 
-	lock_extent_bits(io_tree, 0, isize - 1, &cached_state);
-	start = 0;
-	while (start < isize) {
+static int __btrfs_swap_allocate_extents(struct swap_info_struct *sis,
+                                         struct file *file, u64 start, u64 end,
+					 struct btrfs_swap_info *bsi,
+					 struct btrfs_device **device)
+{
+	struct inode *inode = file_inode(file);
+	struct extent_state *cached_state = NULL;
+	struct btrfs_fs_info *fs_info = BTRFS_I(inode)->root->fs_info;
+	struct extent_io_tree *io_tree = &BTRFS_I(inode)->io_tree;
+	struct extent_map *em = NULL;
+	int ret = 0;
+
+	lock_extent_bits(io_tree, start, end - 1, &cached_state);
+
+	while (start < end) {
 		u64 logical_block_start, physical_block_start;
 		struct btrfs_block_group *bg;
-		u64 len = isize - start;
+		u64 len = end - start;
 
 		em = btrfs_get_extent(BTRFS_I(inode), NULL, 0, start, len);
 		if (IS_ERR(em)) {
@@ -9976,14 +9994,14 @@ static int btrfs_swap_activate(struct swap_info_struct *sis, struct file *file,
 			goto out;
 		}
 
-		if (device == NULL) {
-			device = em->map_lookup->stripes[0].dev;
-			ret = btrfs_add_swapfile_pin(inode, device, false);
+		if (*device == NULL) {
+			*device = em->map_lookup->stripes[0].dev;
+			ret = btrfs_add_swapfile_pin(inode, *device, false);
 			if (ret == 1)
 				ret = 0;
 			else if (ret)
 				goto out;
-		} else if (device != em->map_lookup->stripes[0].dev) {
+		} else if (*device != em->map_lookup->stripes[0].dev) {
 			btrfs_warn(fs_info, "swapfile must be on one device");
 			ret = -EINVAL;
 			goto out;
@@ -10012,29 +10030,115 @@ static int btrfs_swap_activate(struct swap_info_struct *sis, struct file *file,
 				goto out;
 		}
 
-		if (bsi.block_len &&
-		    bsi.block_start + bsi.block_len == physical_block_start) {
-			bsi.block_len += len;
+		if (bsi->block_len &&
+		    bsi->block_start + bsi->block_len == physical_block_start) {
+			bsi->block_len += len;
 		} else {
-			if (bsi.block_len) {
-				ret = btrfs_add_swap_extent(sis, &bsi);
+			if (bsi->block_len) {
+				ret = btrfs_add_swap_extent(sis, bsi);
 				if (ret)
 					goto out;
 			}
-			bsi.start = start;
-			bsi.block_start = physical_block_start;
-			bsi.block_len = len;
+			bsi->start = start;
+			bsi->block_start = physical_block_start;
+			bsi->block_len = len;
 		}
 
 		start += len;
 	}
 
-	if (bsi.block_len)
-		ret = btrfs_add_swap_extent(sis, &bsi);
+	if (bsi->block_len)
+		ret = btrfs_add_swap_extent(sis, bsi);
 
 out:
 	if (!IS_ERR_OR_NULL(em))
 		free_extent_map(em);
+
+	return ret;
+}
+
+static int btrfs_swap_extend(struct swap_info_struct *sis, struct file *file,
+			       sector_t *span)
+{
+	struct inode *inode = file_inode(file);
+	struct btrfs_fs_info *fs_info = BTRFS_I(inode)->root->fs_info;
+	struct extent_io_tree *io_tree = &BTRFS_I(inode)->io_tree;
+	struct extent_state *cached_state = NULL;
+	struct btrfs_device *device = NULL;
+	struct btrfs_swap_info bsi = {
+		.lowest_ppage = (sector_t)-1ULL,
+	};
+	int ret = 0;
+	u64 start_byte;
+	u64 isize;
+
+	ret = __btrfs_swap_validate(inode);
+	if (ret)
+		return ret;
+
+	isize = ALIGN_DOWN(inode->i_size, fs_info->sectorsize);
+
+	ret = __swap_get_next_extent_byte(inode, isize, &start_byte);
+	if (ret)
+		goto out;
+
+	/*
+	 * __btrfs_swap_allocate_extents will only add pages it allocates to
+	 * nr_pages, so we should start with the existing ones
+	 */
+	bsi.nr_pages = start_byte >> PAGE_SHIFT;
+
+
+	ret = __btrfs_swap_allocate_extents(sis, file, start_byte,
+					    isize - start_byte, &bsi, &device);
+	if (ret)
+		goto out;
+
+out:
+	unlock_extent_cached(io_tree, 0, isize - 1, &cached_state);
+
+	clear_bit(BTRFS_FS_EXCL_OP, &fs_info->flags);
+
+	if (ret)
+		return ret;
+
+	*span = bsi.highest_ppage - bsi.lowest_ppage + 1;
+	sis->max = bsi.nr_pages;
+	sis->pages = bsi.nr_pages - 1;
+	sis->highest_bit = bsi.nr_pages - 1;
+	return bsi.nr_extents;
+
+	return ret;
+}
+
+static int btrfs_swap_activate(struct swap_info_struct *sis, struct file *file,
+			       sector_t *span)
+{
+	struct inode *inode = file_inode(file);
+	struct btrfs_fs_info *fs_info = BTRFS_I(inode)->root->fs_info;
+	struct extent_io_tree *io_tree = &BTRFS_I(inode)->io_tree;
+	struct extent_state *cached_state = NULL;
+	struct btrfs_device *device = NULL;
+	struct btrfs_swap_info bsi = {
+		.lowest_ppage = (sector_t)-1ULL,
+	};
+	int ret = 0;
+	u64 isize;
+
+	ret = __btrfs_swap_validate(inode);
+	if (ret)
+		return ret;
+
+	/*
+	 * Snapshots can create extents which require COW even if NODATACOW is
+	 * set. We use this counter to prevent snapshots. We must increment it
+	 * before walking the extents because we don't want a concurrent
+	 * snapshot to run after we've already checked the extents.
+	 */
+	atomic_inc(&BTRFS_I(inode)->root->nr_swapfiles);
+
+	isize = ALIGN_DOWN(inode->i_size, fs_info->sectorsize);
+	ret = __btrfs_swap_allocate_extents(sis, file, 0, isize, &bsi, &device);
 
 	unlock_extent_cached(io_tree, 0, isize - 1, &cached_state);
 
@@ -10057,6 +10161,12 @@ out:
 #else
 static void btrfs_swap_deactivate(struct file *file)
 {
+}
+
+static int btrfs_swap_extend(struct swap_info_struct *sis, struct file *file,
+			     sector_t *span)
+{
+	return -EOPNOTSUPP;
 }
 
 static int btrfs_swap_activate(struct swap_info_struct *sis, struct file *file,
@@ -10131,6 +10241,7 @@ static const struct address_space_operations btrfs_aops = {
 	.set_page_dirty	= btrfs_set_page_dirty,
 	.error_remove_page = generic_error_remove_page,
 	.swap_activate	= btrfs_swap_activate,
+	.swap_extend	= btrfs_swap_extend,
 	.swap_deactivate = btrfs_swap_deactivate,
 };
 
