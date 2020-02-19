@@ -478,6 +478,38 @@ struct extent_map *search_extent_mapping(struct extent_map_tree *tree,
 }
 
 /**
+ * search_last_extent_mapping - find the last extent map
+ * @tree:	tree to lookup in
+ * @start:	byte offset to start the search
+ * @len:	length of the lookup range
+ *
+ * Find and return the the last extent_map struct in @tree that intersects the
+ * [start, len] range.
+ */
+struct extent_map *search_last_extent_mapping(struct extent_map_tree *tree,
+					      u64 start, u64 len)
+{
+	struct extent_map *em;
+	u64 end = range_end(start, len);
+
+	em = __lookup_extent_mapping(tree, end - 1, 1, 0);
+
+	/*
+	 * __lookup_extent_mapping is in non-strict mode in case there is no
+	 * extent for the final byte of the range, which means if there are no
+	 * extents available at all we might end up with an extent outside of
+	 * the range.
+	 *
+	 * We rely on __lookup_extent_mapping always preferring to return the
+	 * previous extent instead of the next one.
+	 */
+	if (!(end > em->start && start < extent_map_end(em)))
+		return NULL;
+
+	return em;
+}
+
+/**
  * remove_extent_mapping - removes an extent_map from the extent tree
  * @tree:	extent tree to remove from
  * @em:		extent map being removed

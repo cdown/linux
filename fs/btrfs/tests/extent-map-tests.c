@@ -548,6 +548,82 @@ out_free:
 	return ret;
 }
 
+static int __add_basic_extent_map(struct extent_map *em,
+				  struct extent_map_tree *em_tree, u64 start,
+				  u64 len)
+{
+	int ret = 0;
+
+	em = alloc_extent_map();
+	if (!em) {
+		test_std_err(TEST_ALLOC_EXTENT_MAP);
+		return -ENOMEM;
+	}
+
+	em->start = start;
+	em->len = len;
+	em->block_start = start * 2; /* avoid merging */
+	em->block_len = len;
+
+	write_lock(&em_tree->lock);
+	ret = add_extent_mapping(em_tree, em, 0);
+	write_unlock(&em_tree->lock);
+	if (ret < 0) {
+		test_err("cannot add extent range");
+		free_extent_map(em);
+	}
+
+	return ret;
+}
+
+/*
+ * Test scenario:
+ *
+ * Given extents mappings at [0, 4K),  [4K, 8K), and [12K, 16K), make sure that
+ * search_last_extent_mapping gets the [4K, 8K) mapping when looking for the
+ * last extent in [0, 12K).
+ *
+ * If this test returns the [12K, 16K) mapping, probably behaviour around which
+ * neighbour to return in __lookup_extent_mapping has changed and we need to
+ * reevaluate.
+ */
+static int test_search_last_extent_mapping(struct extent_map_tree *em_tree)
+{
+	struct extent_map *em1 = NULL, *em2 = NULL, *em3 = NULL, *gottem = NULL;
+	int ret;
+
+	ret = __add_basic_extent_map(em1, em_tree, 0, SZ_4K);
+	if (ret)
+		goto out;
+
+	ret = __add_basic_extent_map(em2, em_tree, SZ_4K, SZ_4K);
+	if (ret)
+		goto out;
+
+	ret = __add_basic_extent_map(em3, em_tree, SZ_4K * 3, SZ_4K);
+	if (ret)
+		goto out;
+
+	gottem = search_last_extent_mapping(em_tree, 0, SZ_4K * 3);
+
+	if (gottem != em2) {
+		test_err("got the wrong extent mapping");
+		ret = -EINVAL;
+	}
+
+out:
+	if (!IS_ERR_OR_NULL(em3))
+		free_extent_map(em3);
+	if (!IS_ERR_OR_NULL(em2))
+		free_extent_map(em2);
+	if (!IS_ERR_OR_NULL(em1))
+		free_extent_map(em1);
+
+	free_extent_map_tree(em_tree);
+
+	return ret;
+}
+
 int btrfs_test_extent_map(void)
 {
 	struct btrfs_fs_info *fs_info = NULL;
@@ -618,6 +694,9 @@ int btrfs_test_extent_map(void)
 	if (ret)
 		goto out;
 	ret = test_case_4(fs_info, em_tree);
+	if (ret)
+		goto out;
+	ret = test_search_last_extent_mapping(em_tree);
 
 	test_msg("running rmap tests");
 	for (i = 0; i < ARRAY_SIZE(rmap_tests); i++) {
