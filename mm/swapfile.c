@@ -2404,7 +2404,7 @@ EXPORT_SYMBOL_GPL(add_swap_extent);
  * extent list operates in PAGE_SIZE disk blocks.  Both S_ISREG and S_ISBLK
  * swapfiles are handled *identically* after swapon time.
  *
- * For S_ISREG swapfiles, setup_swap_extents() will walk all the file's blocks
+ * For S_ISREG swapfiles, setup_swap_extents_activate() will walk all the file's blocks
  * and will parse them into an ordered extent list, in PAGE_SIZE chunks.  If
  * some stray blocks are found which do not fall within the PAGE_SIZE alignment
  * requirements, they are simply tossed out - we will never use those blocks
@@ -2421,7 +2421,8 @@ EXPORT_SYMBOL_GPL(add_swap_extent);
  * This is extremely effective.  The average number of iterations in
  * map_swap_page() has been measured at about 0.3 per page.  - akpm.
  */
-static int setup_swap_extents(struct swap_info_struct *sis, sector_t *span)
+static int setup_swap_extents_activate(struct swap_info_struct *sis,
+				       sector_t *span)
 {
 	struct file *swap_file = sis->swap_file;
 	struct address_space *mapping = swap_file->f_mapping;
@@ -3121,7 +3122,7 @@ static int setup_swap_map_and_extents(struct swap_info_struct *p,
 		inc_cluster_info_page(p, clusters, 0);
 		p->max = maxpages;
 		p->pages = nr_good_pages;
-		nr_extents = setup_swap_extents(p, span);
+		nr_extents = setup_swap_extents_activate(p, span);
 		if (nr_extents < 0)
 			return nr_extents;
 		nr_good_pages = p->pages;
