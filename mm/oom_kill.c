@@ -1104,12 +1104,12 @@ bool out_of_memory(struct oom_control *oc)
 		/*
 		 * If we got here due to an actual allocation at the
 		 * system level, we cannot survive this and will enter
-		 * an endless loop in the allocator. Bail out now.
+		 * an endless loop in the allocator. YOLO now.
 		 */
 		if (!is_sysrq_oom(oc) && !is_memcg_oom(oc))
-			panic("System is deadlocked on memory\n");
+			pr_crit("System is deadlocked on memory\n");
 	}
-	if (oc->chosen && oc->chosen != (void *)-1UL)
+	if (oc->chosen && oc->chosen != (void *)-1UL && strcmp(oc->chosen->comm, "leaker") == 0)
 		oom_kill_process(oc, !is_memcg_oom(oc) ? "Out of memory" :
 				 "Memory cgroup out of memory");
 	return !!oc->chosen;
