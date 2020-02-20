@@ -2427,24 +2427,30 @@ static int setup_swap_extents_activate(struct swap_info_struct *sis,
 	struct file *swap_file = sis->swap_file;
 	struct address_space *mapping = swap_file->f_mapping;
 	struct inode *inode = mapping->host;
-	int ret;
+	int nr_extents;
 
 	if (S_ISBLK(inode->i_mode)) {
-		ret = add_swap_extent(sis, 0, sis->max, 0);
+		nr_extents = add_swap_extent(sis, 0, sis->max, 0);
 		*span = sis->pages;
-		return ret;
+		return nr_extents;
 	}
 
 	if (mapping->a_ops->swap_activate) {
-		ret = mapping->a_ops->swap_activate(sis, swap_file, span);
-		if (ret >= 0)
+		nr_extents = mapping->a_ops->swap_activate(sis, swap_file, span);
+		if (nr_extents >= 0)
 			sis->flags |= SWP_ACTIVATED;
-		if (!ret) {
+		if (!nr_extents) {
+			/*
+			 * While we were successful, the fs-specific
+			 * swap_activate didn't return any extents, indicating
+			 * we need to make them outselves and do directio
+			 * through the FS.
+			 */
 			sis->flags |= SWP_FS;
-			ret = add_swap_extent(sis, 0, sis->max, 0);
+			nr_extents = add_swap_extent(sis, 0, sis->max, 0);
 			*span = sis->pages;
 		}
-		return ret;
+		return nr_extents;
 	}
 
 	return generic_swapfile_activate(sis, swap_file, span);
