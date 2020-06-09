@@ -338,7 +338,7 @@ static int load_elf_fdpic_binary(struct linux_binprm *bprm)
 		interp_params.flags |= ELF_FDPIC_FLAG_CONSTDISP;
 
 	/* flush all traces of the currently running executable */
-	retval = flush_old_exec(bprm);
+	retval = begin_new_exec(bprm);
 	if (retval)
 		goto error;
 
@@ -434,7 +434,6 @@ static int load_elf_fdpic_binary(struct linux_binprm *bprm)
 	current->mm->start_stack = current->mm->start_brk + stack_size;
 #endif
 
-	install_exec_creds(bprm);
 	if (create_elf_fdpic_tables(bprm, current->mm,
 				    &exec_params, &interp_params) < 0)
 		goto error;
@@ -589,7 +588,7 @@ static int create_elf_fdpic_tables(struct linux_binprm *bprm,
 	nitems = 1 + DLINFO_ITEMS + (k_platform ? 1 : 0) +
 		(k_base_platform ? 1 : 0) + AT_VECTOR_SIZE_ARCH;
 
-	if (bprm->interp_flags & BINPRM_FLAGS_EXECFD)
+	if (bprm->have_execfd)
 		nitems++;
 
 	csp = sp;
@@ -629,10 +628,10 @@ static int create_elf_fdpic_tables(struct linux_binprm *bprm,
 			    (elf_addr_t) (unsigned long) u_base_platform);
 	}
 
-	if (bprm->interp_flags & BINPRM_FLAGS_EXECFD) {
+	if (bprm->have_execfd) {
 		nr = 0;
 		csp -= 2 * sizeof(unsigned long);
-		NEW_AUX_ENT(AT_EXECFD, bprm->interp_data);
+		NEW_AUX_ENT(AT_EXECFD, bprm->execfd);
 	}
 
 	nr = 0;
@@ -1549,7 +1548,6 @@ static int elf_fdpic_core_dump(struct coredump_params *cprm)
 {
 #define	NUM_NOTES	6
 	int has_dumped = 0;
-	mm_segment_t fs;
 	int segs;
 	int i;
 	struct vm_area_struct *vma;
@@ -1589,31 +1587,31 @@ static int elf_fdpic_core_dump(struct coredump_params *cprm)
 	/* alloc memory for large data structures: too large to be on stack */
 	elf = kmalloc(sizeof(*elf), GFP_KERNEL);
 	if (!elf)
-		goto cleanup;
+		goto end_coredump;
 	prstatus = kzalloc(sizeof(*prstatus), GFP_KERNEL);
 	if (!prstatus)
-		goto cleanup;
+		goto end_coredump;
 	psinfo = kmalloc(sizeof(*psinfo), GFP_KERNEL);
 	if (!psinfo)
-		goto cleanup;
+		goto end_coredump;
 	notes = kmalloc_array(NUM_NOTES, sizeof(struct memelfnote),
 			      GFP_KERNEL);
 	if (!notes)
-		goto cleanup;
+		goto end_coredump;
 	fpu = kmalloc(sizeof(*fpu), GFP_KERNEL);
 	if (!fpu)
-		goto cleanup;
+		goto end_coredump;
 #ifdef ELF_CORE_COPY_XFPREGS
 	xfpu = kmalloc(sizeof(*xfpu), GFP_KERNEL);
 	if (!xfpu)
-		goto cleanup;
+		goto end_coredump;
 #endif
 
 	for (ct = current->mm->core_state->dumper.next;
 					ct; ct = ct->next) {
 		tmp = kzalloc(sizeof(*tmp), GFP_KERNEL);
 		if (!tmp)
-			goto cleanup;
+			goto end_coredump;
 
 		tmp->thread = ct->task;
 		list_add(&tmp->list, &thread_list);
@@ -1677,9 +1675,6 @@ static int elf_fdpic_core_dump(struct coredump_params *cprm)
 		fill_note(notes + numnote++,
 			  "LINUX", ELF_CORE_XFPREG_TYPE, sizeof(*xfpu), xfpu);
 #endif
-
-	fs = get_fs();
-	set_fs(KERNEL_DS);
 
 	offset += sizeof(*elf);				/* Elf header */
 	offset += segs * sizeof(struct elf_phdr);	/* Program headers */
@@ -1788,9 +1783,6 @@ static int elf_fdpic_core_dump(struct coredump_params *cprm)
 	}
 
 end_coredump:
-	set_fs(fs);
-
-cleanup:
 	while (!list_empty(&thread_list)) {
 		struct list_head *tmp = thread_list.next;
 		list_del(tmp);
