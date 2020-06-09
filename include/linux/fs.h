@@ -39,6 +39,7 @@
 #include <linux/fs_types.h>
 #include <linux/build_bug.h>
 #include <linux/stddef.h>
+#include <linux/watch_queue.h>
 
 #include <asm/byteorder.h>
 #include <uapi/linux/fs.h>
@@ -68,6 +69,7 @@ struct fsverity_info;
 struct fsverity_operations;
 struct fs_context;
 struct fs_parameter_spec;
+struct fsinfo_context;
 
 extern void __init inode_init(void);
 extern void __init inode_init_early(void);
@@ -1048,6 +1050,7 @@ struct lock_manager_operations {
 	bool (*lm_break)(struct file_lock *);
 	int (*lm_change)(struct file_lock *, int, struct list_head *);
 	void (*lm_setup)(struct file_lock *, void **);
+	bool (*lm_breaker_owns_lease)(struct file_lock *);
 };
 
 struct lock_manager {
@@ -1412,6 +1415,8 @@ extern int send_sigurg(struct fown_struct *fown);
 #define SB_I_IMA_UNVERIFIABLE_SIGNATURE	0x00000020
 #define SB_I_UNTRUSTED_MOUNTER		0x00000040
 
+#define SB_I_SKIP_SYNC	0x00000100	/* Skip superblock at global sync */
+
 /* Possible states of 'frozen' field */
 enum {
 	SB_UNFROZEN = 0,		/* FS is unfrozen */
@@ -1560,6 +1565,15 @@ struct super_block {
 
 	spinlock_t		s_inode_wblist_lock;
 	struct list_head	s_inodes_wb;	/* writeback inodes */
+
+	/* Superblock event notifications */
+	u64			s_unique_id;
+
+#ifdef CONFIG_SB_NOTIFICATIONS
+	struct watch_list	*s_watchers;
+#endif
+	atomic_t		s_change_counter;	/* Count of config change notifications */
+	atomic_t		s_notify_counter;	/* Count of other notifications */
 } __randomize_layout;
 
 /* Helper functions so that in most cases filesystems will
@@ -1957,6 +1971,9 @@ struct super_operations {
 	int (*thaw_super) (struct super_block *);
 	int (*unfreeze_fs) (struct super_block *);
 	int (*statfs) (struct dentry *, struct kstatfs *);
+#ifdef CONFIG_FSINFO
+	int (*fsinfo)(struct path *, struct fsinfo_context *);
+#endif
 	int (*remount_fs) (struct super_block *, int *, char *);
 	void (*umount_begin) (struct super_block *);
 
@@ -3658,6 +3675,58 @@ static inline int inode_drain_writes(struct inode *inode)
 {
 	inode_dio_wait(inode);
 	return filemap_write_and_wait(inode->i_mapping);
+}
+
+extern void __notify_sb(struct super_block *s,
+			enum superblock_notification_type subtype,
+			u32 info);
+extern void __notify_sb_error(struct super_block *s, int error);
+extern void __notify_sb_EQDUOT(struct super_block *s);
+
+/**
+ * notify_sb: Post simple superblock notification.
+ * @s: The superblock the notification is about.
+ * @subtype: The type of notification.
+ * @info: WATCH_INFO_FLAG_* flags to be set in the record.
+ */
+static inline void notify_sb(struct super_block *s,
+			     enum superblock_notification_type subtype,
+			     u32 info)
+{
+#ifdef CONFIG_SB_NOTIFICATIONS
+	atomic_inc(&s->s_change_counter);
+	if (unlikely(READ_ONCE(s->s_watchers)))
+		__notify_sb(s, subtype, info);
+#endif
+}
+
+/**
+ * notify_sb_error: Post superblock error notification.
+ * @s: The superblock the notification is about.
+ * @error: The error number to be recorded.
+ */
+static inline int notify_sb_error(struct super_block *s, int error)
+{
+#ifdef CONFIG_SB_NOTIFICATIONS
+	atomic_inc(&s->s_notify_counter);
+	if (unlikely(READ_ONCE(s->s_watchers)))
+		__notify_sb_error(s, error);
+#endif
+	return error;
+}
+
+/**
+ * notify_sb_EDQUOT: Post superblock quota overrun notification.
+ * @s: The superblock the notification is about.
+ */
+static inline int notify_sb_EQDUOT(struct super_block *s)
+{
+#ifdef CONFIG_SB_NOTIFICATIONS
+	atomic_inc(&s->s_notify_counter);
+	if (unlikely(READ_ONCE(s->s_watchers)))
+		__notify_sb_EQDUOT(s);
+#endif
+	return -EDQUOT;
 }
 
 #endif /* _LINUX_FS_H */

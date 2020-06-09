@@ -414,21 +414,13 @@ static int is_errata100(struct pt_regs *regs, unsigned long address)
 	return 0;
 }
 
+/* Pentium F0 0F C7 C8 bug workaround: */
 static int is_f00f_bug(struct pt_regs *regs, unsigned long address)
 {
 #ifdef CONFIG_X86_F00F_BUG
-	unsigned long nr;
-
-	/*
-	 * Pentium F0 0F C7 C8 bug workaround:
-	 */
-	if (boot_cpu_has_bug(X86_BUG_F00F)) {
-		nr = (address - idt_descr.address) >> 3;
-
-		if (nr == 6) {
-			do_invalid_op(regs, 0);
-			return 1;
-		}
+	if (boot_cpu_has_bug(X86_BUG_F00F) && idt_is_f00f_address(address)) {
+		handle_invalid_op(regs);
+		return 1;
 	}
 #endif
 	return 0;
@@ -785,6 +777,8 @@ __bad_area_nosemaphore(struct pt_regs *regs, unsigned long error_code,
 			force_sig_pkuerr((void __user *)address, pkey);
 
 		force_sig_fault(SIGSEGV, si_code, (void __user *)address);
+
+		local_irq_disable();
 
 		return;
 	}
@@ -1374,19 +1368,28 @@ do_page_fault(struct pt_regs *regs, unsigned long hw_error_code,
 	 * getting values from real and async page faults mixed up.
 	 *
 	 * Fingers crossed.
+	 *
+	 * The async #PF handling code takes care of idtentry handling
+	 * itself.
 	 */
 	if (kvm_handle_async_pf(regs, (u32)address))
 		return;
 
-	trace_page_fault_entries(regs, hw_error_code, address);
+	/*
+	 * Entry handling for valid #PF from kernel mode is slightly
+	 * different: RCU is already watching and rcu_irq_enter() must not
+	 * be invoked because a kernel fault on a user space address might
+	 * sleep.
+	 *
+	 * In case the fault hit a RCU idle region the conditional entry
+	 * code reenabled RCU to avoid subsequent wreckage which helps
+	 * debugability.
+	 */
+	rcu_exit = idtentry_enter_cond_rcu(regs);
 
-	if (unlikely(kmmio_fault(regs, address)))
-		return;
+	instrumentation_begin();
+	handle_page_fault(regs, error_code, address);
+	instrumentation_end();
 
-	/* Was the fault on kernel-controlled part of the address space? */
-	if (unlikely(fault_in_kernel_space(address)))
-		do_kern_addr_fault(regs, hw_error_code, address);
-	else
-		do_user_addr_fault(regs, hw_error_code, address);
+	idtentry_exit_cond_rcu(regs, rcu_exit);
 }
-NOKPROBE_SYMBOL(do_page_fault);
