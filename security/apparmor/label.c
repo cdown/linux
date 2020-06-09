@@ -333,10 +333,7 @@ void aa_label_destroy(struct aa_label *label)
 	}
 	aa_free_secid(label->secid);
 
-<<<<<<< HEAD
-=======
 	aa_put_proxy(label->proxy);
->>>>>>> linux-next/akpm-base
 	label->proxy = (struct aa_proxy *) PROXY_POISON + 1;
 }
 
