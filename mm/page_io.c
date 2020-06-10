@@ -179,6 +179,7 @@ static int generic_allocate_swap_extents(struct swap_info_struct *sis,
 
 		first_block = probe_block;
 		ret = bmap(inode, &first_block);
+		trace_printk("1: ret: %d, first_block: %llu\n", ret, first_block);
 		if (ret || !first_block)
 			goto bad_bmap;
 
@@ -196,6 +197,7 @@ static int generic_allocate_swap_extents(struct swap_info_struct *sis,
 
 			block = probe_block + block_in_page;
 			ret = bmap(inode, &block);
+			trace_printk("2: ret: %d, block: %llu\n", ret, block);
 			if (ret || !block)
 				goto bad_bmap;
 
