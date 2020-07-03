@@ -2374,6 +2374,8 @@ out:
 			 * sc->priority further than desirable.
 			 */
 			scan = max(scan, SWAP_CLUSTER_MAX);
+
+			pr_err("scan:%lu protection:%lu\n", scan, protection);
 		} else {
 			scan = lruvec_size;
 		}
@@ -2618,6 +2620,7 @@ static void shrink_node_memcgs(pg_data_t *pgdat, struct scan_control *sc)
 		mem_cgroup_calculate_protection(target_memcg, memcg);
 
 		if (mem_cgroup_below_min(memcg)) {
+			pr_err("under min:%lu emin:%lu current:%lu\n", memcg->memory.min, memcg->memory.emin, page_counter_read(&memcg->memory));
 			/*
 			 * Hard protection.
 			 * If there is no reclaimable memory, OOM.
@@ -2630,6 +2633,7 @@ static void shrink_node_memcgs(pg_data_t *pgdat, struct scan_control *sc)
 			 * there is an unprotected supply
 			 * of reclaimable memory from other cgroups.
 			 */
+			pr_err("under low:%lu elow:%lu current:%lu\n", memcg->memory.low, memcg->memory.elow, page_counter_read(&memcg->memory));
 			if (!sc->memcg_low_reclaim) {
 				sc->memcg_low_skipped = 1;
 				continue;
