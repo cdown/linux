@@ -47,6 +47,7 @@ struct stat64;
 struct statfs;
 struct statfs64;
 struct statx;
+struct fsinfo_params;
 struct __sysctl_args;
 struct sysinfo;
 struct timespec;
@@ -444,6 +445,8 @@ asmlinkage long sys_openat(int dfd, const char __user *filename, int flags,
 asmlinkage long sys_openat2(int dfd, const char __user *filename,
 			    struct open_how *how, size_t size);
 asmlinkage long sys_close(unsigned int fd);
+asmlinkage long sys_close_range(unsigned int fd, unsigned int max_fd,
+				unsigned int flags);
 asmlinkage long sys_vhangup(void);
 
 /* fs/pipe.c */
@@ -1005,6 +1008,13 @@ asmlinkage long sys_pidfd_send_signal(int pidfd, int sig,
 				       siginfo_t __user *info,
 				       unsigned int flags);
 asmlinkage long sys_pidfd_getfd(int pidfd, int fd, unsigned int flags);
+asmlinkage long sys_watch_mount(int dfd, const char __user *path,
+				unsigned int at_flags, int watch_fd, int watch_id);
+asmlinkage long sys_watch_sb(int dfd, const char __user *path,
+			     unsigned int at_flags, int watch_fd, int watch_id);
+asmlinkage long sys_fsinfo(int dfd, const char __user *pathname,
+			   const struct fsinfo_params __user *params, size_t params_size,
+			   void __user *result_buffer, size_t result_buf_size);
 
 /*
  * Architecture-specific system calls

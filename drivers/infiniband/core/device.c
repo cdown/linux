@@ -158,11 +158,7 @@ static void *xan_find_marked(struct xarray *xa, unsigned long *indexp,
 	void *entry;
 
 	rcu_read_lock();
-	do {
-		entry = xas_find_marked(&xas, ULONG_MAX, filter);
-		if (xa_is_zero(entry))
-			break;
-	} while (xas_retry(&xas, entry));
+	entry = xas_find_marked(&xas, ULONG_MAX, filter);
 	rcu_read_unlock();
 
 	if (entry) {
@@ -2617,8 +2613,14 @@ void ib_set_device_ops(struct ib_device *dev, const struct ib_device_ops *ops)
 	SET_DEVICE_OP(dev_ops, drain_rq);
 	SET_DEVICE_OP(dev_ops, drain_sq);
 	SET_DEVICE_OP(dev_ops, enable_driver);
-	SET_DEVICE_OP(dev_ops, fill_res_entry);
-	SET_DEVICE_OP(dev_ops, fill_stat_entry);
+	SET_DEVICE_OP(dev_ops, fill_res_cm_id_entry);
+	SET_DEVICE_OP(dev_ops, fill_res_cq_entry);
+	SET_DEVICE_OP(dev_ops, fill_res_cq_entry_raw);
+	SET_DEVICE_OP(dev_ops, fill_res_mr_entry);
+	SET_DEVICE_OP(dev_ops, fill_res_mr_entry_raw);
+	SET_DEVICE_OP(dev_ops, fill_res_qp_entry);
+	SET_DEVICE_OP(dev_ops, fill_res_qp_entry_raw);
+	SET_DEVICE_OP(dev_ops, fill_stat_mr_entry);
 	SET_DEVICE_OP(dev_ops, get_dev_fw_str);
 	SET_DEVICE_OP(dev_ops, get_dma_mr);
 	SET_DEVICE_OP(dev_ops, get_hw_stats);

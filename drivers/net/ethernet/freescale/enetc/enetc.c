@@ -266,7 +266,7 @@ static irqreturn_t enetc_msix(int irq, void *data)
 	/* disable interrupts */
 	enetc_wr_reg(v->rbier, 0);
 
-	for_each_set_bit(i, &v->tx_rings_map, v->count_tx_rings)
+	for_each_set_bit(i, &v->tx_rings_map, ENETC_MAX_NUM_TXQS)
 		enetc_wr_reg(v->tbier_base + ENETC_BDR_OFF(i), 0);
 
 	napi_schedule_irqoff(&v->napi);
@@ -302,7 +302,7 @@ static int enetc_poll(struct napi_struct *napi, int budget)
 	/* enable interrupts */
 	enetc_wr_reg(v->rbier, ENETC_RBIER_RXTIE);
 
-	for_each_set_bit(i, &v->tx_rings_map, v->count_tx_rings)
+	for_each_set_bit(i, &v->tx_rings_map, ENETC_MAX_NUM_TXQS)
 		enetc_wr_reg(v->tbier_base + ENETC_BDR_OFF(i),
 			     ENETC_TBIER_TXTIE);
 
@@ -1713,7 +1713,7 @@ int enetc_ioctl(struct net_device *ndev, struct ifreq *rq, int cmd)
 int enetc_alloc_msix(struct enetc_ndev_priv *priv)
 {
 	struct pci_dev *pdev = priv->si->pdev;
-	int size, v_tx_rings;
+	int v_tx_rings;
 	int i, n, err, nvec;
 
 	nvec = ENETC_BDR_INT_BASE_IDX + priv->bdr_int_num;
@@ -1728,15 +1728,13 @@ int enetc_alloc_msix(struct enetc_ndev_priv *priv)
 
 	/* # of tx rings per int vector */
 	v_tx_rings = priv->num_tx_rings / priv->bdr_int_num;
-	size = sizeof(struct enetc_int_vector) +
-	       sizeof(struct enetc_bdr) * v_tx_rings;
 
 	for (i = 0; i < priv->bdr_int_num; i++) {
 		struct enetc_int_vector *v;
 		struct enetc_bdr *bdr;
 		int j;
 
-		v = kzalloc(size, GFP_KERNEL);
+		v = kzalloc(struct_size(v, tx_ring, v_tx_rings), GFP_KERNEL);
 		if (!v) {
 			err = -ENOMEM;
 			goto fail;

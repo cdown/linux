@@ -986,7 +986,7 @@ static void sii8620_set_auto_zone(struct sii8620 *ctx)
 
 static void sii8620_stop_video(struct sii8620 *ctx)
 {
-	u8 uninitialized_var(val);
+	u8 val;
 
 	sii8620_write_seq_static(ctx,
 		REG_TPI_INTR_EN, 0,
@@ -2244,6 +2244,7 @@ static int sii8620_is_packing_required(struct sii8620 *ctx,
 }
 
 static enum drm_mode_status sii8620_mode_valid(struct drm_bridge *bridge,
+					 const struct drm_display_info *info,
 					 const struct drm_display_mode *mode)
 {
 	struct sii8620 *ctx = bridge_to_sii8620(bridge);

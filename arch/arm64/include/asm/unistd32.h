@@ -879,12 +879,20 @@ __SYSCALL(__NR_fspick, sys_fspick)
 __SYSCALL(__NR_pidfd_open, sys_pidfd_open)
 #define __NR_clone3 435
 __SYSCALL(__NR_clone3, sys_clone3)
+#define __NR_close_range 436
+__SYSCALL(__NR_close_range, sys_close_range)
 #define __NR_openat2 437
 __SYSCALL(__NR_openat2, sys_openat2)
 #define __NR_pidfd_getfd 438
 __SYSCALL(__NR_pidfd_getfd, sys_pidfd_getfd)
 #define __NR_faccessat2 439
 __SYSCALL(__NR_faccessat2, sys_faccessat2)
+#define __NR_watch_mount 440
+__SYSCALL(__NR_watch_mount, sys_watch_mount)
+#define __NR_watch_sb 441
+__SYSCALL(__NR_watch_sb, sys_watch_sb)
+#define __NR_fsinfo 442
+__SYSCALL(__NR_fsinfo, sys_fsinfo)
 
 /*
  * Please add new compat syscalls above this comment and update

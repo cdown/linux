@@ -419,7 +419,7 @@ static void ingenic_drm_encoder_atomic_mode_set(struct drm_encoder *encoder,
 		cfg |= JZ_LCD_CFG_VSYNC_ACTIVE_LOW;
 	if (info->bus_flags & DRM_BUS_FLAG_DE_LOW)
 		cfg |= JZ_LCD_CFG_DE_ACTIVE_LOW;
-	if (info->bus_flags & DRM_BUS_FLAG_PIXDATA_NEGEDGE)
+	if (info->bus_flags & DRM_BUS_FLAG_PIXDATA_DRIVE_NEGEDGE)
 		cfg |= JZ_LCD_CFG_PCLK_FALLING_EDGE;
 
 	if (!priv->panel_is_sharp) {
@@ -519,18 +519,7 @@ static struct drm_driver ingenic_drm_driver_data = {
 	.patchlevel		= 0,
 
 	.fops			= &ingenic_drm_fops,
-
-	.dumb_create		= drm_gem_cma_dumb_create,
-	.gem_free_object_unlocked = drm_gem_cma_free_object,
-	.gem_vm_ops		= &drm_gem_cma_vm_ops,
-
-	.prime_handle_to_fd	= drm_gem_prime_handle_to_fd,
-	.prime_fd_to_handle	= drm_gem_prime_fd_to_handle,
-	.gem_prime_get_sg_table	= drm_gem_cma_prime_get_sg_table,
-	.gem_prime_import_sg_table = drm_gem_cma_prime_import_sg_table,
-	.gem_prime_vmap		= drm_gem_cma_prime_vmap,
-	.gem_prime_vunmap	= drm_gem_cma_prime_vunmap,
-	.gem_prime_mmap		= drm_gem_cma_prime_mmap,
+	DRM_GEM_CMA_DRIVER_OPS,
 
 	.irq_handler		= ingenic_drm_irq_handler,
 };

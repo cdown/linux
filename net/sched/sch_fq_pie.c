@@ -125,12 +125,12 @@ static inline void flow_queue_add(struct fq_pie_flow *flow,
 	skb->next = NULL;
 }
 
-static int fq_pie_qdisc_enqueue(struct sk_buff *skb, struct Qdisc *sch,
+static int fq_pie_qdisc_enqueue(struct sk_buff *skb, struct Qdisc *sch, spinlock_t *root_lock,
 				struct sk_buff **to_free)
 {
 	struct fq_pie_sched_data *q = qdisc_priv(sch);
 	struct fq_pie_flow *sel_flow;
-	int uninitialized_var(ret);
+	int ret;
 	u8 memory_limited = false;
 	u8 enqueue = false;
 	u32 pkt_len;

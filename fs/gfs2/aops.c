@@ -335,7 +335,7 @@ static int gfs2_write_cache_jdata(struct address_space *mapping,
 	int done = 0;
 	struct pagevec pvec;
 	int nr_pages;
-	pgoff_t uninitialized_var(writeback_index);
+	pgoff_t writeback_index;
 	pgoff_t index;
 	pgoff_t end;
 	pgoff_t done_index;
@@ -600,7 +600,7 @@ static void gfs2_readahead(struct readahead_control *rac)
 	struct gfs2_inode *ip = GFS2_I(inode);
 	struct gfs2_holder gh;
 
-	gfs2_holder_init(ip->i_gl, LM_ST_SHARED, 0, &gh);
+	gfs2_holder_init(ip->i_gl, LM_ST_SHARED, LM_FLAG_TRY, &gh);
 	if (gfs2_glock_nq(&gh))
 		goto out_uninit;
 	if (!gfs2_is_stuffed(ip))

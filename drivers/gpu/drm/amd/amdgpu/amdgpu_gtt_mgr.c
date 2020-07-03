@@ -229,7 +229,7 @@ static int amdgpu_gtt_mgr_new(struct ttm_mem_type_manager *man,
 	if ((&tbo->mem == mem || tbo->mem.mem_type != TTM_PL_TT) &&
 	    atomic64_read(&mgr->available) < mem->num_pages) {
 		spin_unlock(&mgr->lock);
-		return 0;
+		return -ENOSPC;
 	}
 	atomic64_sub(mem->num_pages, &mgr->available);
 	spin_unlock(&mgr->lock);
@@ -250,7 +250,6 @@ static int amdgpu_gtt_mgr_new(struct ttm_mem_type_manager *man,
 		if (unlikely(r)) {
 			kfree(node);
 			mem->mm_node = NULL;
-			r = 0;
 			goto err_out;
 		}
 	} else {
@@ -268,8 +267,6 @@ err_out:
  * amdgpu_gtt_mgr_del - free ranges
  *
  * @man: TTM memory type manager
- * @tbo: TTM BO we need this range for
- * @place: placement flags and restrictions
  * @mem: TTM memory object
  *
  * Free the allocated GTT again.

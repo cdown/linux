@@ -319,8 +319,7 @@ static int amdgpu_vram_mgr_new(struct ttm_mem_type_manager *man,
 	mem_bytes = (u64)mem->num_pages << PAGE_SHIFT;
 	if (atomic64_add_return(mem_bytes, &mgr->usage) > max_bytes) {
 		atomic64_sub(mem_bytes, &mgr->usage);
-		mem->mm_node = NULL;
-		return 0;
+		return -ENOSPC;
 	}
 
 	if (place->flags & TTM_PL_FLAG_CONTIGUOUS) {
@@ -400,15 +399,13 @@ error:
 	atomic64_sub(mem->num_pages << PAGE_SHIFT, &mgr->usage);
 
 	kvfree(nodes);
-	return r == -ENOSPC ? 0 : r;
+	return r;
 }
 
 /**
  * amdgpu_vram_mgr_del - free ranges
  *
  * @man: TTM memory type manager
- * @tbo: TTM BO we need this range for
- * @place: placement flags and restrictions
  * @mem: TTM memory object
  *
  * Free the allocated VRAM again.
