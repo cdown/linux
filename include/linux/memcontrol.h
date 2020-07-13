@@ -410,16 +410,19 @@ static inline unsigned long mem_cgroup_protection(struct mem_cgroup *root,
 void mem_cgroup_calculate_protection(struct mem_cgroup *root,
 				     struct mem_cgroup *memcg);
 
+static inline bool mem_cgroup_supports_protection(struct mem_cgroup *memcg)
+{
+	/*
+	 * The root memcg doesn't account charges, and doesn't support
+	 * protection.
+	 */
+	return !mem_cgroup_disabled() && !mem_cgroup_is_root(memcg);
+
+}
+
 static inline bool mem_cgroup_below_low(struct mem_cgroup *memcg)
 {
-	if (mem_cgroup_disabled())
-		return false;
-
-	/*
-	 * Root memcg doesn't account charges and doesn't support
-	 * protection
-	 */
-	if (mem_cgroup_is_root(memcg))
+	if (!mem_cgroup_supports_protection(memcg))
 		return false;
 
 	return READ_ONCE(memcg->memory.elow) >=
@@ -428,14 +431,7 @@ static inline bool mem_cgroup_below_low(struct mem_cgroup *memcg)
 
 static inline bool mem_cgroup_below_min(struct mem_cgroup *memcg)
 {
-	if (mem_cgroup_disabled())
-		return false;
-
-	/*
-	 * Root memcg doesn't account charges and doesn't support
-	 * protection
-	 */
-	if (mem_cgroup_is_root(memcg))
+	if (!mem_cgroup_supports_protection(memcg))
 		return false;
 
 	return READ_ONCE(memcg->memory.emin) >=
