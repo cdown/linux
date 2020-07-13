@@ -2593,6 +2593,7 @@ retry_reclaim:
 	 * throttling.
 	 */
 	if (nr_reclaimed || nr_retries--) {
+		pr_err("retrying, in_retry:%d nr_reclaimed:%lu nr_retries:%d\n", in_retry, nr_reclaimed, nr_retries);
 		in_retry = true;
 		goto retry_reclaim;
 	}
