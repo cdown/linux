@@ -2539,6 +2539,7 @@ void mem_cgroup_handle_over_high(void)
 	unsigned int nr_pages = current->memcg_nr_pages_over_high;
 	int nr_retries = MAX_RECLAIM_RETRIES;
 	struct mem_cgroup *memcg;
+	bool in_retry = false;
 
 	if (likely(!nr_pages))
 		return;
@@ -2547,7 +2548,18 @@ void mem_cgroup_handle_over_high(void)
 	current->memcg_nr_pages_over_high = 0;
 
 retry_reclaim:
-	nr_reclaimed = reclaim_high(memcg, nr_pages, GFP_KERNEL);
+	/*
+	 * The allocating task should reclaim at least the batch size, but for
+	 * subsequent retries we only want to do what's necessary to prevent oom
+	 * or breaching resource isolation.
+	 *
+	 * This is distinct from memory.max or page allocator behaviour because
+	 * memory.high is currently batched, whereas memory.max and the page
+	 * allocator run every time an allocation is made.
+	 */
+	nr_reclaimed = reclaim_high(memcg,
+				    in_retry ? SWAP_CLUSTER_MAX : nr_pages,
+				    GFP_KERNEL);
 
 	/*
 	 * memory.high is breached and reclaim is unable to keep up. Throttle
@@ -2580,8 +2592,10 @@ retry_reclaim:
 	 * memory.high, we want to encourage that rather than doing allocator
 	 * throttling.
 	 */
-	if (nr_reclaimed || nr_retries--)
+	if (nr_reclaimed || nr_retries--) {
+		in_retry = true;
 		goto retry_reclaim;
+	}
 
 	/*
 	 * If we exit early, we're guaranteed to die (since
