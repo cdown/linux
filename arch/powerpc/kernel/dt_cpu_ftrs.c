@@ -24,7 +24,6 @@
 
 
 /* Device-tree visible constants follow */
-#define ISA_V2_07B      2070
 #define ISA_V3_0B       3000
 #define ISA_V3_1        3100
 
@@ -337,6 +336,7 @@ static int __init feat_enable_mmu_radix(struct dt_cpu_feature *f)
 #ifdef CONFIG_PPC_RADIX_MMU
 	cur_cpu_spec->mmu_features |= MMU_FTR_TYPE_RADIX;
 	cur_cpu_spec->mmu_features |= MMU_FTRS_HASH_BASE;
+	cur_cpu_spec->mmu_features |= MMU_FTR_GTSE;
 	cur_cpu_spec->cpu_user_features |= PPC_FEATURE_HAS_MMU;
 
 	return 1;
@@ -674,12 +674,12 @@ static void __init cpufeatures_setup_start(u32 isa)
 {
 	pr_info("setup for ISA %d\n", isa);
 
-	if (isa >= 3000) {
+	if (isa >= ISA_V3_0B) {
 		cur_cpu_spec->cpu_features |= CPU_FTR_ARCH_300;
 		cur_cpu_spec->cpu_user_features2 |= PPC_FEATURE2_ARCH_3_00;
 	}
 
-	if (isa >= 3100) {
+	if (isa >= ISA_V3_1) {
 		cur_cpu_spec->cpu_features |= CPU_FTR_ARCH_31;
 		cur_cpu_spec->cpu_user_features2 |= PPC_FEATURE2_ARCH_3_1;
 	}

@@ -48,6 +48,7 @@ available subsections can be seen below.
    scsi
    libata
    target
+   mailbox
    mtdnand
    miscellaneous
    mei/index
@@ -98,7 +99,6 @@ available subsections can be seen below.
    rfkill
    serial/index
    sm501
-   smsc_ece1099
    switchtec
    sync_file
    vfio-mediated-device

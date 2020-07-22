@@ -1,0 +1,89 @@
+arm/soc
+	patch
+		udc: lpc32xx: mark local function static
+	omap/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v5.9/soc-signed
+	patch
+		ARM: rpc: Change blacklist to quirklist in ecode.c file
+
+arm/dt
+	renesas/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/geert/renesas-devel tags/renesas-arm-dt-for-v5.9-tag1
+	uniphier/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/masahiroy/linux-uniphier tags/uniphier-dt-v5.9
+	uniphier/dt64
+		git://git.kernel.org/pub/scm/linux/kernel/git/masahiroy/linux-uniphier tags/uniphier-dt64-v5.9
+	omap/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v5.9/dt-signed
+	broadcom/dts
+		https://github.com/Broadcom/stblinux tags/arm-soc/for-5.9/devicetree
+	omap/drop-pdata
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v5.9/ti-sysc-drop-pdata-take2-signed
+	omap/dt-2
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v5.9/dt-pt2-signed
+	mediatek/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/matthias.bgg/linux tags/v5.8-next-dts64
+	renesas/dt-2
+		git://git.kernel.org/pub/scm/linux/kernel/git/geert/renesas-devel tags/renesas-arm-dt-for-v5.9-tag2
+	renesas/dt-bindings
+		git://git.kernel.org/pub/scm/linux/kernel/git/geert/renesas-devel tags/renesas-dt-bindings-for-v5.9-tag1
+	amlogic/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/khilman/linux-amlogic tags/amlogic-dt
+	amlogic/dt64
+		git://git.kernel.org/pub/scm/linux/kernel/git/khilman/linux-amlogic tags/amlogic-dt64
+	tegra/dt-bindings
+		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-5.9-dt-bindings
+	tegra/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-5.9-arm-dt
+	tegra/dt64
+		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-5.9-arm64-dt
+
+arm/drivers
+	drivers/soc-attr
+		git://git.kernel.org/pub/scm/linux/kernel/git/sudeep.holla/linux tags/soc-attr-updates-5.9
+	drivers/tee-optee-bus
+		git://git.linaro.org/people/jens.wiklander/linux-tee tags/optee-bus-for-v5.9
+	drivers/scmi
+		git://git.kernel.org/pub/scm/linux/kernel/git/sudeep.holla/linux tags/scmi-updates-5.9
+	mediatek/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/matthias.bgg/linux tags/v5.8-next-soc
+	renesas/drivers
+		git://git.kernel.org/pub/scm/linux/kernel/git/geert/renesas-devel tags/renesas-drivers-for-v5.9-tag1
+	patch
+		firmware: arm_scmi: Use NULL instead of integer 0 for rate pointer
+	tegra/firmware
+		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-5.9-firmware
+	tegra/memory
+		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-5.9-memory
+	tegra/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-5.9-soc
+
+arm/defconfig
+	renesas/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/geert/renesas-devel tags/renesas-arm-defconfig-for-v5.9-tag1
+	patch
+		arm64: defconfig: enable TSN features for ENETC and similiar hardware
+		arm64: defconfig: enable CONFIG_FSL_ENETC_QOS
+		arm/arm64: defconfig: Update configs to use the new CROS_EC options
+
+arm/newsoc
+	patch
+		arm64: Add config for Keem Bay SoC
+		dt-bindings: arm: Add Keem Bay bindings
+		MAINTAINERS: Add maintainers for Keem Bay SoC
+		arm64: dts: keembay: Add device tree for Keem Bay SoC
+		arm64: dts: keembay: Add device tree for Keem Bay EVM board
+
+arm/late
+
+arm/fixes
+	<no branch> (54320dcaa2522db3222c02d68b52cfed32a2e95b)
+		git://git.kernel.org/pub/scm/linux/kernel/git/khilman/linux-amlogic tags/amlogic-fixes
+	<no branch> (7f6e8dffc30bd22b15ad810fb90ea741c15e6d54)
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-fixes-5.8-2
+	<no branch> (2a4117df9b436a0e4c79d211284ab2097bcd00dc)
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v5.8/fixes-rc5-signed
+	<no branch> (fecc5cfcd55f7aacc483726c405a951bd6aaaf2e)
+		git://git.kernel.org/pub/scm/linux/kernel/git/geert/renesas-devel tags/renesas-fixes-for-v5.8-tag1
+	<no branch> (681a5c71fb829fc2193e3bb524af41525477f5c3)
+		git://git.kernel.org/pub/scm/linux/kernel/git/dinguyen/linux tags/socfpga_fixes_for_v5.8_v2

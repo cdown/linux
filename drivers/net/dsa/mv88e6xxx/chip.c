@@ -664,7 +664,10 @@ static void mv88e6xxx_mac_config(struct dsa_switch *ds, int port,
 				 const struct phylink_link_state *state)
 {
 	struct mv88e6xxx_chip *chip = ds->priv;
+	struct mv88e6xxx_port *p;
 	int err;
+
+	p = &chip->ports[port];
 
 	/* FIXME: is this the correct test? If we're in fixed mode on an
 	 * internal port, why should we process this any different from
@@ -675,10 +678,14 @@ static void mv88e6xxx_mac_config(struct dsa_switch *ds, int port,
 		return;
 
 	mv88e6xxx_reg_lock(chip);
-	/* FIXME: should we force the link down here - but if we do, how
-	 * do we restore the link force/unforce state? The driver layering
-	 * gets in the way.
+	/* In inband mode, the link may come up at any time while the link
+	 * is not forced down. Force the link down while we reconfigure the
+	 * interface mode.
 	 */
+	if (mode == MLO_AN_INBAND && p->interface != state->interface &&
+	    chip->info->ops->port_set_link)
+		chip->info->ops->port_set_link(chip, port, LINK_FORCED_DOWN);
+
 	err = mv88e6xxx_port_config_interface(chip, port, state->interface);
 	if (err && err != -EOPNOTSUPP)
 		goto err_unlock;
@@ -690,6 +697,15 @@ static void mv88e6xxx_mac_config(struct dsa_switch *ds, int port,
 	 */
 	if (err > 0)
 		err = 0;
+
+	/* Undo the forced down state above after completing configuration
+	 * irrespective of its state on entry, which allows the link to come up.
+	 */
+	if (mode == MLO_AN_INBAND && p->interface != state->interface &&
+	    chip->info->ops->port_set_link)
+		chip->info->ops->port_set_link(chip, port, LINK_UNFORCED);
+
+	p->interface = state->interface;
 
 err_unlock:
 	mv88e6xxx_reg_unlock(chip);
@@ -1751,7 +1767,7 @@ static int mv88e6xxx_policy_insert(struct mv88e6xxx_chip *chip, int port,
 	}
 
 	if ((fs->flow_type & FLOW_EXT) && fs->m_ext.vlan_tci) {
-		if (fs->m_ext.vlan_tci != 0xffff)
+		if (fs->m_ext.vlan_tci != htons(0xffff))
 			return -EOPNOTSUPP;
 		vid = be16_to_cpu(fs->h_ext.vlan_tci) & VLAN_VID_MASK;
 	}
@@ -2691,6 +2707,31 @@ static int mv88e6xxx_setup_port(struct mv88e6xxx_chip *chip, int port)
 	 * ID, and set the default packet priority to zero.
 	 */
 	return mv88e6xxx_port_write(chip, port, MV88E6XXX_PORT_DEFAULT_VLAN, 0);
+}
+
+static int mv88e6xxx_get_max_mtu(struct dsa_switch *ds, int port)
+{
+	struct mv88e6xxx_chip *chip = ds->priv;
+
+	if (chip->info->ops->port_set_jumbo_size)
+		return 10240;
+	return 1522;
+}
+
+static int mv88e6xxx_change_mtu(struct dsa_switch *ds, int port, int new_mtu)
+{
+	struct mv88e6xxx_chip *chip = ds->priv;
+	int ret = 0;
+
+	mv88e6xxx_reg_lock(chip);
+	if (chip->info->ops->port_set_jumbo_size)
+		ret = chip->info->ops->port_set_jumbo_size(chip, port, new_mtu);
+	else
+		if (new_mtu > 1522)
+			ret = -EINVAL;
+	mv88e6xxx_reg_unlock(chip);
+
+	return ret;
 }
 
 static int mv88e6xxx_port_enable(struct dsa_switch *ds, int port,
@@ -5525,6 +5566,8 @@ static const struct dsa_switch_ops mv88e6xxx_switch_ops = {
 	.get_sset_count		= mv88e6xxx_get_sset_count,
 	.port_enable		= mv88e6xxx_port_enable,
 	.port_disable		= mv88e6xxx_port_disable,
+	.port_max_mtu		= mv88e6xxx_get_max_mtu,
+	.port_change_mtu	= mv88e6xxx_change_mtu,
 	.get_mac_eee		= mv88e6xxx_get_mac_eee,
 	.set_mac_eee		= mv88e6xxx_set_mac_eee,
 	.get_eeprom_len		= mv88e6xxx_get_eeprom_len,

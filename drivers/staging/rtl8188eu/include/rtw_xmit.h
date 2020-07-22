@@ -46,7 +46,6 @@ do {\
 	dot11txpn.val = (dot11txpn.val == 0xffffff) ? 0 : (dot11txpn.val+1);\
 } while (0)
 
-
 #define TKIP_IV(pattrib_iv, dot11txpn, keyidx)\
 do {\
 	pattrib_iv[0] = dot11txpn._byte_.TSC1;\
@@ -194,14 +193,9 @@ struct xmit_buf {
 	void *priv_data;
 	u16 ext_tag; /*  0: Normal xmitbuf, 1: extension xmitbuf. */
 	u16 flags;
-	u32 alloc_sz;
 	u32  len;
 	struct submit_ctx *sctx;
-	u32	ff_hwaddr;
 	struct urb *pxmit_urb[8];
-	dma_addr_t dma_transfer_addr;	/* (in) dma addr for transfer_buffer */
-	u8 bpending[8];
-	int last[8];
 };
 
 struct xmit_frame {

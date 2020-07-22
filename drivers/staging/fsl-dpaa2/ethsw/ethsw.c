@@ -48,7 +48,7 @@ static int ethsw_port_set_pvid(struct ethsw_port_priv *port_priv, u16 pvid)
 	struct ethsw_core *ethsw = port_priv->ethsw_data;
 	struct net_device *netdev = port_priv->netdev;
 	struct dpsw_tci_cfg tci_cfg = { 0 };
-	bool is_oper;
+	bool up;
 	int err, ret;
 
 	err = dpsw_if_get_tci(ethsw->mc_io, 0, ethsw->dpsw_handle,
@@ -61,8 +61,8 @@ static int ethsw_port_set_pvid(struct ethsw_port_priv *port_priv, u16 pvid)
 	tci_cfg.vlan_id = pvid;
 
 	/* Interface needs to be down to change PVID */
-	is_oper = netif_oper_up(netdev);
-	if (is_oper) {
+	up = netif_running(netdev);
+	if (up) {
 		err = dpsw_if_disable(ethsw->mc_io, 0,
 				      ethsw->dpsw_handle,
 				      port_priv->idx);
@@ -85,7 +85,7 @@ static int ethsw_port_set_pvid(struct ethsw_port_priv *port_priv, u16 pvid)
 	port_priv->pvid = pvid;
 
 set_tci_error:
-	if (is_oper) {
+	if (up) {
 		ret = dpsw_if_enable(ethsw->mc_io, 0,
 				     ethsw->dpsw_handle,
 				     port_priv->idx);
@@ -188,7 +188,7 @@ static int ethsw_port_set_stp_state(struct ethsw_port_priv *port_priv, u8 state)
 	};
 	int err;
 
-	if (!netif_oper_up(port_priv->netdev) || state == port_priv->stp_state)
+	if (!netif_running(port_priv->netdev) || state == port_priv->stp_state)
 		return 0;	/* Nothing to do */
 
 	err = dpsw_if_set_stp(port_priv->ethsw_data->mc_io, 0,
@@ -445,6 +445,12 @@ static int port_carrier_state_sync(struct net_device *netdev)
 	struct dpsw_link_state state;
 	int err;
 
+	/* Interrupts are received even though no one issued an 'ifconfig up'
+	 * on the switch interface. Ignore these link state update interrupts
+	 */
+	if (!netif_running(netdev))
+		return 0;
+
 	err = dpsw_if_get_link_state(port_priv->ethsw_data->mc_io, 0,
 				     port_priv->ethsw_data->dpsw_handle,
 				     port_priv->idx, &state);
@@ -462,6 +468,7 @@ static int port_carrier_state_sync(struct net_device *netdev)
 			netif_carrier_off(netdev);
 		port_priv->link_state = state.up;
 	}
+
 	return 0;
 }
 
@@ -472,6 +479,13 @@ static int port_open(struct net_device *netdev)
 
 	/* No need to allow Tx as control interface is disabled */
 	netif_tx_stop_all_queues(netdev);
+
+	/* Explicitly set carrier off, otherwise
+	 * netif_carrier_ok() will return true and cause 'ip link show'
+	 * to report the LOWER_UP flag, even though the link
+	 * notification wasn't even received.
+	 */
+	netif_carrier_off(netdev);
 
 	err = dpsw_if_enable(port_priv->ethsw_data->mc_io, 0,
 			     port_priv->ethsw_data->dpsw_handle,
@@ -677,6 +691,46 @@ err_map:
 	return err;
 }
 
+static int ethsw_port_set_mac_addr(struct ethsw_port_priv *port_priv)
+{
+	struct ethsw_core *ethsw = port_priv->ethsw_data;
+	struct net_device *net_dev = port_priv->netdev;
+	struct device *dev = net_dev->dev.parent;
+	u8 mac_addr[ETH_ALEN];
+	int err;
+
+	if (!(ethsw->features & ETHSW_FEATURE_MAC_ADDR))
+		return 0;
+
+	/* Get firmware address, if any */
+	err = dpsw_if_get_port_mac_addr(ethsw->mc_io, 0, ethsw->dpsw_handle,
+					port_priv->idx, mac_addr);
+	if (err) {
+		dev_err(dev, "dpsw_if_get_port_mac_addr() failed\n");
+		return err;
+	}
+
+	/* First check if firmware has any address configured by bootloader */
+	if (!is_zero_ether_addr(mac_addr)) {
+		memcpy(net_dev->dev_addr, mac_addr, net_dev->addr_len);
+	} else {
+		/* No MAC address configured, fill in net_dev->dev_addr
+		 * with a random one
+		 */
+		eth_hw_addr_random(net_dev);
+		dev_dbg_once(dev, "device(s) have all-zero hwaddr, replaced with random\n");
+
+		/* Override NET_ADDR_RANDOM set by eth_hw_addr_random(); for all
+		 * practical purposes, this will be our "permanent" mac address,
+		 * at least until the next reboot. This move will also permit
+		 * register_netdevice() to properly fill up net_dev->perm_addr.
+		 */
+		net_dev->addr_assign_type = NET_ADDR_PERM;
+	}
+
+	return 0;
+}
+
 static const struct net_device_ops ethsw_port_ops = {
 	.ndo_open		= port_open,
 	.ndo_stop		= port_stop,
@@ -699,8 +753,10 @@ static void ethsw_links_state_update(struct ethsw_core *ethsw)
 {
 	int i;
 
-	for (i = 0; i < ethsw->sw_attr.num_ifs; i++)
+	for (i = 0; i < ethsw->sw_attr.num_ifs; i++) {
 		port_carrier_state_sync(ethsw->ports[i]->netdev);
+		ethsw_port_set_mac_addr(ethsw->ports[i]);
+	}
 }
 
 static irqreturn_t ethsw_irq0_handler_thread(int irq_num, void *arg)
@@ -1351,13 +1407,21 @@ err_switchdev_nb:
 	return err;
 }
 
+static void ethsw_detect_features(struct ethsw_core *ethsw)
+{
+	ethsw->features = 0;
+
+	if (ethsw->major > 8 || (ethsw->major == 8 && ethsw->minor >= 6))
+		ethsw->features |= ETHSW_FEATURE_MAC_ADDR;
+}
+
 static int ethsw_init(struct fsl_mc_device *sw_dev)
 {
 	struct device *dev = &sw_dev->dev;
 	struct ethsw_core *ethsw = dev_get_drvdata(dev);
-	u16 version_major, version_minor, i;
 	struct dpsw_stp_cfg stp_cfg;
 	int err;
+	u16 i;
 
 	ethsw->dev_id = sw_dev->obj_desc.id;
 
@@ -1375,24 +1439,26 @@ static int ethsw_init(struct fsl_mc_device *sw_dev)
 	}
 
 	err = dpsw_get_api_version(ethsw->mc_io, 0,
-				   &version_major,
-				   &version_minor);
+				   &ethsw->major,
+				   &ethsw->minor);
 	if (err) {
 		dev_err(dev, "dpsw_get_api_version err %d\n", err);
 		goto err_close;
 	}
 
 	/* Minimum supported DPSW version check */
-	if (version_major < DPSW_MIN_VER_MAJOR ||
-	    (version_major == DPSW_MIN_VER_MAJOR &&
-	     version_minor < DPSW_MIN_VER_MINOR)) {
+	if (ethsw->major < DPSW_MIN_VER_MAJOR ||
+	    (ethsw->major == DPSW_MIN_VER_MAJOR &&
+	     ethsw->minor < DPSW_MIN_VER_MINOR)) {
 		dev_err(dev, "DPSW version %d:%d not supported. Use %d.%d or greater.\n",
-			version_major,
-			version_minor,
+			ethsw->major,
+			ethsw->minor,
 			DPSW_MIN_VER_MAJOR, DPSW_MIN_VER_MINOR);
 		err = -ENOTSUPP;
 		goto err_close;
 	}
+
+	ethsw_detect_features(ethsw);
 
 	err = dpsw_reset(ethsw->mc_io, 0, ethsw->dpsw_handle);
 	if (err) {
@@ -1589,6 +1655,10 @@ static int ethsw_probe_port(struct ethsw_core *ethsw, u16 port_idx)
 	if (err)
 		goto err_port_probe;
 
+	err = ethsw_port_set_mac_addr(port_priv);
+	if (err)
+		goto err_port_probe;
+
 	err = register_netdev(port_netdev);
 	if (err < 0) {
 		dev_err(dev, "register_netdev error %d\n", err);
@@ -1658,6 +1728,10 @@ static int ethsw_probe(struct fsl_mc_device *sw_dev)
 		dev_err(ethsw->dev, "dpsw_enable err %d\n", err);
 		goto err_free_ports;
 	}
+
+	/* Make sure the switch ports are disabled at probe time */
+	for (i = 0; i < ethsw->sw_attr.num_ifs; i++)
+		dpsw_if_disable(ethsw->mc_io, 0, ethsw->dpsw_handle, i);
 
 	/* Setup IRQs */
 	err = ethsw_setup_irqs(sw_dev);

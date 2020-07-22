@@ -893,7 +893,6 @@ static int ak8974_probe(struct i2c_client *i2c,
 		goto disable_pm;
 	}
 
-	indio_dev->dev.parent = &i2c->dev;
 	switch (ak8974->variant) {
 	case AK8974_WHOAMI_VALUE_AMI306:
 	case AK8974_WHOAMI_VALUE_AMI305:

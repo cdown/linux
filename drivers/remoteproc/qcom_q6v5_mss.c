@@ -26,9 +26,11 @@
 #include <linux/reset.h>
 #include <linux/soc/qcom/mdt_loader.h>
 #include <linux/iopoll.h>
+#include <linux/slab.h>
 
 #include "remoteproc_internal.h"
 #include "qcom_common.h"
+#include "qcom_pil_info.h"
 #include "qcom_q6v5.h"
 
 #include <linux/qcom_scm.h>
@@ -111,8 +113,6 @@
 #define QDSP6SS_SLEEP                   0x3C
 #define QDSP6SS_BOOT_CORE_START         0x400
 #define QDSP6SS_BOOT_CMD                0x404
-#define QDSP6SS_BOOT_STATUS		0x408
-#define BOOT_STATUS_TIMEOUT_US		200
 #define BOOT_FSM_TIMEOUT                10000
 
 struct reg_info {
@@ -578,13 +578,15 @@ static int q6v5proc_reset(struct q6v5 *qproc)
 		/* De-assert the Q6 stop core signal */
 		writel(1, qproc->reg_base + QDSP6SS_BOOT_CORE_START);
 
+		/* Wait for 10 us for any staggering logic to settle */
+		usleep_range(10, 20);
+
 		/* Trigger the boot FSM to start the Q6 out-of-reset sequence */
 		writel(1, qproc->reg_base + QDSP6SS_BOOT_CMD);
 
-		/* Poll the QDSP6SS_BOOT_STATUS for FSM completion */
-		ret = readl_poll_timeout(qproc->reg_base + QDSP6SS_BOOT_STATUS,
-					 val, (val & BIT(0)) != 0, 1,
-					 BOOT_STATUS_TIMEOUT_US);
+		/* Poll the MSS_STATUS for FSM completion */
+		ret = readl_poll_timeout(qproc->rmb_base + RMB_MBA_MSS_STATUS,
+					 val, (val & BIT(0)) != 0, 10, BOOT_FSM_TIMEOUT);
 		if (ret) {
 			dev_err(qproc->dev, "Boot FSM failed to complete.\n");
 			/* Reset the modem so that boot FSM is in reset state */
@@ -1188,6 +1190,8 @@ static int q6v5_mpss_load(struct q6v5 *qproc)
 		dev_err(qproc->dev, "MPSS authentication timed out\n");
 	else if (ret < 0)
 		dev_err(qproc->dev, "MPSS authentication failed: %d\n", ret);
+
+	qcom_pil_info_store("modem", qproc->mpss_phys, qproc->mpss_size);
 
 release_firmware:
 	release_firmware(fw);
