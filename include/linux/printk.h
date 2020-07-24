@@ -279,6 +279,11 @@ static inline void printk_safe_flush_on_panic(void)
 
 extern int kptr_restrict;
 
+#define printk_store_fmt(fmt, ...) ({ \
+	static const char __UNIQUE_ID(__pr_)[] __attribute__((section("printk_fmts"), unused)) = (fmt); \
+	printk((fmt), ##__VA_ARGS__); \
+	})
+
 /**
  * pr_fmt - used by the pr_*() macros to generate the printk format string
  * @fmt: format string passed from a pr_*() macro
@@ -335,7 +340,13 @@ extern int kptr_restrict;
  * generate the format string.
  */
 #define pr_err(fmt, ...) \
-	printk(KERN_ERR pr_fmt(fmt), ##__VA_ARGS__)
+	do { \
+		if (__builtin_constant_p(fmt)) \
+			printk_store_fmt(KERN_ERR pr_fmt(fmt), ##__VA_ARGS__); \
+		else \
+			printk(KERN_ERR pr_fmt(fmt), ##__VA_ARGS__); \
+	} while (0)
+
 /**
  * pr_warn - Print a warning-level message
  * @fmt: format string
