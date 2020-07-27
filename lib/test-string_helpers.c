@@ -143,6 +143,9 @@ static const struct test_string_2 escape0[] __initconst = {{
 		.out = "\\\\h\\\\\"\\a\\e\\\\",
 		.flags = ESCAPE_SPECIAL,
 	},{
+		.out = "\\\\h\\\\\\\"\\a\\e\\\\",
+		.flags = ESCAPE_SPECIAL | ESCAPE_QUOTE,
+	},{
 		.out = "\\\\\\150\\\\\\042\\a\\e\\\\",
 		.flags = ESCAPE_SPECIAL | ESCAPE_OCTAL,
 	},{
@@ -199,6 +202,9 @@ static const struct test_string_2 escape0[] __initconst = {{
 	},{
 		.out = "\\x1bb \\C\\x07\"\\x90\\x0d]",
 		.flags = ESCAPE_NP | ESCAPE_HEX,
+	},{
+		.out = "\\eb \\C\\a\\\"\\220\\r]",
+		.flags = ESCAPE_PRINTF,
 	},{
 		/* terminator */
 	}},
