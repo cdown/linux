@@ -764,6 +764,16 @@ config PRINTK_SAFE_LOG_BUF_SHIFT
 		     13 =>   8 KB for each CPU
 		     12 =>   4 KB for each CPU
 
+config PRINTK_ENUMERATION
+	bool "/proc/printk_formats support"
+	depends on PRINTK
+	help
+	  This option adds support for enumeration of all printk formats known
+	  at compile time at /proc/printk_formats. This includes printk formats
+	  built into the kernel, and those in loaded modules.
+
+	  There is no additional runtime cost to printk with this enabled.
+
 #
 # Architectures with an unreliable sched_clock() should select this:
 #

@@ -47,6 +47,7 @@
 #include <linux/sched/clock.h>
 #include <linux/sched/debug.h>
 #include <linux/sched/task_stack.h>
+#include <linux/proc_fs.h>
 
 #include <linux/uaccess.h>
 #include <asm/sections.h>
@@ -616,6 +617,286 @@ static ssize_t msg_print_ext_body(char *buf, size_t size,
 out:
 	return len;
 }
+
+#ifdef CONFIG_PRINTK_ENUMERATION
+
+/* /proc/printk_formats */
+
+struct module_printk_fmt {
+	struct module *module;
+	struct list_head list;
+	const char *fmt;
+};
+
+#ifdef CONFIG_MODULES
+
+static LIST_HEAD(module_printk_fmt_list);
+
+/* for module_printk_fmt_list */
+static DEFINE_MUTEX(module_printk_fmt_mutex);
+
+/*
+ * pos has different semantic meanings depending on its value:
+ *
+ * - pos < __stop_printk_fmts - __start_printk_fmts: pos is a byte offset
+ *   within the .printk_fmts section.
+ * - pos >= __stop_printk_fmts - __start_printk_fmts: pos is an index in
+ *   module_printk_fmt_list, or is out of bounds.
+ *
+ * This function returns the module_printk_fmt_list index for a particular
+ * position. As such, values <0 mean that the input is not a list index, but a
+ * byte offset inside the .printk_fmts section.
+ */
+static loff_t pos_to_module_idx(loff_t *pos)
+{
+	return *pos - (__stop_printk_fmts - __start_printk_fmts);
+}
+
+static void store_module_printk_fmts(struct module *mod, const char *start,
+				     unsigned int max)
+{
+	loff_t pos = 0;
+
+	mutex_lock(&module_printk_fmt_mutex);
+
+	while (pos < max) {
+		const char *mfmt = start + pos;
+		struct module_printk_fmt *mod_fmt_obj;
+
+		mod_fmt_obj =
+			kmalloc(sizeof(struct module_printk_fmt), GFP_KERNEL);
+
+		if (!mod_fmt_obj)
+			return;
+
+		mod_fmt_obj->module = mod;
+		mod_fmt_obj->fmt = mfmt;
+
+		list_add_tail(&mod_fmt_obj->list, &module_printk_fmt_list);
+
+		pos += strlen(mfmt);
+		while (pos < max && start[pos] == '\0')
+			pos++;
+	}
+
+	mutex_unlock(&module_printk_fmt_mutex);
+}
+
+static void destroy_module_printk_fmts(struct module *mod)
+{
+	struct module_printk_fmt *tmp, *fmt;
+
+	mutex_lock(&module_printk_fmt_mutex);
+
+	list_for_each_entry_safe(fmt, tmp, &module_printk_fmt_list, list) {
+		if (fmt->module == mod) {
+			list_del(&fmt->list);
+			kfree(fmt);
+		}
+	}
+
+	mutex_unlock(&module_printk_fmt_mutex);
+}
+
+static int module_printk_fmts_notify(struct notifier_block *self,
+				     unsigned long val, void *data)
+{
+	struct module *mod = data;
+
+	if (mod->printk_fmts_text_size) {
+		switch (val) {
+		case MODULE_STATE_COMING:
+			store_module_printk_fmts(mod, mod->printk_fmts_start,
+						 mod->printk_fmts_text_size);
+			break;
+
+		case MODULE_STATE_GOING:
+			destroy_module_printk_fmts(mod);
+			break;
+		}
+	}
+	return NOTIFY_OK;
+}
+
+static struct notifier_block module_printk_fmts_nb = {
+	.notifier_call = module_printk_fmts_notify,
+};
+
+static int __init module_printk_fmts_init(void)
+{
+	register_module_notifier(&module_printk_fmts_nb);
+	return 0;
+}
+
+static struct module_printk_fmt *
+find_next_module_format(void *vmod, struct module_printk_fmt *ret, loff_t *pos)
+{
+	struct module_printk_fmt *mod = NULL;
+	loff_t module_idx = pos_to_module_idx(pos);
+
+	(*pos)++;
+
+	/*
+	 * Caller is supposed to make sure that this position relates to a
+	 * module.
+	 */
+	if (WARN_ON(module_idx < 0))
+		return NULL;
+
+	if (!vmod || module_idx == 0) {
+		loff_t cur = 0;
+
+		/*
+		 * A new run from _start with no state, or the first iteration
+		 * of the mod list, so just walk it. In general we should get
+		 * state, so this should be rare outside of the first run.
+		 */
+
+		list_for_each_entry(mod, &module_printk_fmt_list, list) {
+			if (cur == module_idx)
+				goto found_mod;
+			cur++;
+		}
+
+		/*
+		 * List exhausted, check we were only probing and not wildly
+		 * out of bounds.
+		 */
+
+		WARN_ON(module_idx > cur + 1);
+		kfree(ret);
+		return NULL;
+	}
+
+	if (ret->list.next == &module_printk_fmt_list) {
+		kfree(ret);
+		return NULL;
+	}
+
+	mod = container_of(ret->list.next, typeof(*ret), list);
+
+found_mod:
+	ret->fmt = mod->fmt;
+	ret->list = mod->list;
+
+	return ret;
+}
+
+static void module_printk_start(void)
+{
+	mutex_lock(&module_printk_fmt_mutex);
+}
+
+static void module_printk_stop(void)
+{
+	mutex_unlock(&module_printk_fmt_mutex);
+}
+
+core_initcall(module_printk_fmts_init);
+
+#else /* !CONFIG_MODULES */
+
+static struct module_printk_fmt *
+find_next_module_format(void *vmod, struct module_printk_fmt *ret, loff_t *pos)
+{
+	(*pos)++;
+	return NULL;
+}
+
+static void module_printk_start(void)
+{
+}
+
+static void module_printk_stop(void)
+{
+}
+
+#endif /* CONFIG_MODULES */
+
+/*
+ * Finds a printk format either from the built in section or the module list,
+ * updating `pos' to the next entry.
+ *
+ * Internally allocates a buffer for module_printk_fmt, which will either be
+ * destroyed internally on list exhaustion, or by proc_printk_formats_stop if
+ * the seq_file interface itself decides to start over.
+ */
+static struct module_printk_fmt *find_next_format(void *vmod, loff_t *pos)
+{
+	loff_t builtin_max = __stop_printk_fmts - __start_printk_fmts;
+	struct module_printk_fmt *ret = NULL;
+
+	if (!vmod) {
+		ret = kmalloc(sizeof(*ret), GFP_KERNEL);
+		if (!ret)
+			return NULL;
+		memset(ret, 0, sizeof(*ret));
+	} else
+		ret = vmod;
+
+	if (*pos < builtin_max) {
+		const char *builtin_fmt = __start_printk_fmts + *pos;
+
+		*pos += strlen(builtin_fmt);
+		for (;;) {
+			const char *tmp = __start_printk_fmts + *pos;
+
+			if (tmp >= __stop_printk_fmts || *tmp)
+				break;
+
+			(*pos)++;
+		}
+
+		ret->fmt = builtin_fmt;
+		return ret;
+	}
+
+	return find_next_module_format(vmod, ret, pos);
+}
+
+static void *proc_printk_formats_start(struct seq_file *s, loff_t *pos)
+{
+	module_printk_start();
+	return find_next_format(NULL, pos);
+}
+
+static void *proc_printk_formats_next(struct seq_file *s, void *vmod,
+				      loff_t *pos)
+{
+	return find_next_format(vmod, pos);
+}
+
+static void proc_printk_formats_stop(struct seq_file *s, void *vmod)
+{
+	module_printk_stop();
+	kfree(vmod);
+}
+
+static int proc_printk_formats_show(struct seq_file *s, void *vmod)
+{
+	seq_puts(s, ((struct module_printk_fmt *)vmod)->fmt);
+	return 0;
+}
+
+static const struct seq_operations proc_printk_formats_ops = {
+	.start = proc_printk_formats_start,
+	.next = proc_printk_formats_next,
+	.stop = proc_printk_formats_stop,
+	.show = proc_printk_formats_show
+};
+
+static int __init proc_printk_formats_init(void)
+{
+	if (!proc_create_seq("printk_formats", 0, NULL,
+			     &proc_printk_formats_ops))
+		return -ENOMEM;
+
+	return 0;
+}
+
+core_initcall(proc_printk_formats_init);
+
+#endif /* CONFIG_PRINTK_ENUMERATION */
 
 /* /dev/kmsg - userspace message inject/listen interface */
 struct devkmsg_user {
