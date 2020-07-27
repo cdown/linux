@@ -164,6 +164,11 @@ static inline void printk_nmi_direct_exit(void) { }
 struct dev_printk_info;
 
 #ifdef CONFIG_PRINTK
+enum log_flags {
+	LOG_NEWLINE	= 2,	/* text ended with a newline */
+	LOG_CONT	= 8,	/* text is a fragment of a continuation line */
+};
+
 asmlinkage __printf(4, 0)
 int vprintk_emit(int facility, int level,
 		 const struct dev_printk_info *dev_info,
@@ -173,12 +178,12 @@ asmlinkage __printf(1, 0)
 int vprintk(const char *fmt, va_list args);
 
 asmlinkage __printf(1, 2) __cold
-int printk(const char *fmt, ...);
+int _printk(const char *fmt, ...);
 
 /*
  * Special printk facility for scheduler/timekeeping use only, _DO_NOT_USE_ !
  */
-__printf(1, 2) __cold int printk_deferred(const char *fmt, ...);
+__printf(1, 2) __cold int _printk_deferred(const char *fmt, ...);
 
 /*
  * Please don't use printk_ratelimit(), because it shares ratelimiting state
@@ -206,6 +211,7 @@ void __init setup_log_buf(int early);
 __printf(1, 2) void dump_stack_set_arch_desc(const char *fmt, ...);
 void dump_stack_print_info(const char *log_lvl);
 void show_regs_print_info(const char *log_lvl);
+u16 parse_prefix(const char *text, int *level, enum log_flags *lflags);
 extern asmlinkage void dump_stack(void) __cold;
 extern void printk_safe_flush(void);
 extern void printk_safe_flush_on_panic(void);
@@ -216,12 +222,12 @@ int vprintk(const char *s, va_list args)
 	return 0;
 }
 static inline __printf(1, 2) __cold
-int printk(const char *s, ...)
+int _printk(const char *s, ...)
 {
 	return 0;
 }
 static inline __printf(1, 2) __cold
-int printk_deferred(const char *s, ...)
+int _printk_deferred(const char *s, ...)
 {
 	return 0;
 }
@@ -300,6 +306,64 @@ extern int kptr_restrict;
 #ifndef pr_fmt
 #define pr_fmt(fmt) fmt
 #endif
+
+struct module;
+
+#ifdef CONFIG_PRINTK_INDEX
+extern void pi_sec_store(struct module *mod);
+extern void pi_sec_remove(struct module *mod);
+
+struct pi_object {
+	const char *fmt;
+	const char *func;
+	const char *file;
+	unsigned int line;
+};
+
+extern struct pi_object __start_printk_index[];
+extern struct pi_object __stop_printk_index[];
+
+#define pi_sec_elf_embed(_p_func, _fmt, ...)				       \
+	({								       \
+		int _p_ret;						       \
+									       \
+		if (__builtin_constant_p(_fmt)) {			       \
+			/*
+			 * The compiler may not be able to eliminate this, so
+			 * we need to make sure that it doesn't see any
+			 * hypothetical assignment for non-constants even
+			 * though this is already inside the
+			 * __builtin_constant_p guard.
+			 */						       \
+			static struct pi_object _pi			       \
+			__section(".printk_index") = {			       \
+				.fmt = __builtin_constant_p(_fmt) ? (_fmt) : NULL, \
+				.func = __func__,			       \
+				.file = __FILE__,			       \
+				.line = __LINE__,			       \
+			};						       \
+			_p_ret = _p_func(_pi.fmt, ##__VA_ARGS__);	       \
+		} else							       \
+			_p_ret = _p_func(_fmt, ##__VA_ARGS__);		       \
+									       \
+		_p_ret;							       \
+	})
+
+#define printk(fmt, ...) pi_sec_elf_embed(_printk, fmt, ##__VA_ARGS__)
+#define printk_deferred(fmt, ...)					       \
+	pi_sec_elf_embed(_printk_deferred, fmt, ##__VA_ARGS__)
+#else /* !CONFIG_PRINTK_INDEX */
+static inline void pi_sec_store(struct module *mod)
+{
+}
+
+static inline void pi_sec_remove(struct module *mod)
+{
+}
+
+#define printk(...) _printk(__VA_ARGS__)
+#define printk_deferred(...) _printk_deferred(__VA_ARGS__)
+#endif /* CONFIG_PRINTK_INDEX */
 
 /**
  * pr_emerg - Print an emergency-level message
