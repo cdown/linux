@@ -178,7 +178,7 @@ int printk(const char *fmt, ...);
 /*
  * Special printk facility for scheduler/timekeeping use only, _DO_NOT_USE_ !
  */
-__printf(1, 2) __cold int printk_deferred(const char *fmt, ...);
+__printf(1, 2) __cold int _printk_deferred(const char *fmt, ...);
 
 /*
  * Please don't use printk_ratelimit(), because it shares ratelimiting state
@@ -284,6 +284,12 @@ static inline void printk_safe_flush_on_panic(void)
 
 extern int kptr_restrict;
 
+#ifdef CONFIG_PRINTK_ENUMERATION
+/* Barriers for printk format enumeration */
+extern char __start_printk_fmts[];
+extern char __stop_printk_fmts[];
+#endif
+
 /**
  * pr_fmt - used by the pr_*() macros to generate the printk format string
  * @fmt: format string passed from a pr_*() macro
@@ -301,6 +307,42 @@ extern int kptr_restrict;
 #define pr_fmt(fmt) fmt
 #endif
 
+#ifdef CONFIG_PRINTK_ENUMERATION
+#define _printk_store_fmt(func, var, ret_var, fmt, ...)			       \
+	({								       \
+		int ret_var;						       \
+									       \
+		if (__builtin_constant_p(fmt)) {			       \
+			static const char var[] __section(".printk_fmts") =    \
+				fmt;					       \
+			ret_var = printk(var, ##__VA_ARGS__);		       \
+		} else							       \
+			ret_var = printk(fmt, ##__VA_ARGS__);		       \
+									       \
+		ret_var;						       \
+	})
+
+#define printk_store_fmt(fmt, ...)					       \
+	_printk_store_fmt(printk, __UNIQUE_ID(__pr_), __UNIQUE_ID(__pr_ret),   \
+			  fmt, ##__VA_ARGS__)
+
+#define printk_deferred_store_fmt(fmt, ...)				       \
+	_printk_store_fmt(_printk_deferred, __UNIQUE_ID(__pr_),		       \
+			__UNIQUE_ID(__pr_ret), fmt, ##__VA_ARGS__)
+
+/* 
+ * Since printk may be called from unknown contexts, change its pr_* callsites
+ * instead of defining printk as printk_store_fmt.
+ *
+ * On the other hand, printk_deferred has a well-understood, fixed set of
+ * callsites, so prefer to go that route for it.
+ */
+#define printk_deferred printk_deferred_store_fmt
+#else /* !CONFIG_PRINTK_ENUMERATION */
+#define printk_store_fmt printk
+#define printk_deferred _printk_deferred
+#endif /* CONFIG_PRINTK_ENUMERATION */
+
 /**
  * pr_emerg - Print an emergency-level message
  * @fmt: format string
@@ -310,7 +352,7 @@ extern int kptr_restrict;
  * generate the format string.
  */
 #define pr_emerg(fmt, ...) \
-	printk(KERN_EMERG pr_fmt(fmt), ##__VA_ARGS__)
+	printk_store_fmt(KERN_EMERG pr_fmt(fmt), ##__VA_ARGS__)
 /**
  * pr_alert - Print an alert-level message
  * @fmt: format string
@@ -320,7 +362,7 @@ extern int kptr_restrict;
  * generate the format string.
  */
 #define pr_alert(fmt, ...) \
-	printk(KERN_ALERT pr_fmt(fmt), ##__VA_ARGS__)
+	printk_store_fmt(KERN_ALERT pr_fmt(fmt), ##__VA_ARGS__)
 /**
  * pr_crit - Print a critical-level message
  * @fmt: format string
@@ -330,7 +372,7 @@ extern int kptr_restrict;
  * generate the format string.
  */
 #define pr_crit(fmt, ...) \
-	printk(KERN_CRIT pr_fmt(fmt), ##__VA_ARGS__)
+	printk_store_fmt(KERN_CRIT pr_fmt(fmt), ##__VA_ARGS__)
 /**
  * pr_err - Print an error-level message
  * @fmt: format string
@@ -340,7 +382,7 @@ extern int kptr_restrict;
  * generate the format string.
  */
 #define pr_err(fmt, ...) \
-	printk(KERN_ERR pr_fmt(fmt), ##__VA_ARGS__)
+	printk_store_fmt(KERN_ERR pr_fmt(fmt), ##__VA_ARGS__)
 /**
  * pr_warn - Print a warning-level message
  * @fmt: format string
@@ -350,7 +392,7 @@ extern int kptr_restrict;
  * to generate the format string.
  */
 #define pr_warn(fmt, ...) \
-	printk(KERN_WARNING pr_fmt(fmt), ##__VA_ARGS__)
+	printk_store_fmt(KERN_WARNING pr_fmt(fmt), ##__VA_ARGS__)
 /**
  * pr_notice - Print a notice-level message
  * @fmt: format string
@@ -360,7 +402,7 @@ extern int kptr_restrict;
  * generate the format string.
  */
 #define pr_notice(fmt, ...) \
-	printk(KERN_NOTICE pr_fmt(fmt), ##__VA_ARGS__)
+	printk_store_fmt(KERN_NOTICE pr_fmt(fmt), ##__VA_ARGS__)
 /**
  * pr_info - Print an info-level message
  * @fmt: format string
@@ -370,7 +412,7 @@ extern int kptr_restrict;
  * generate the format string.
  */
 #define pr_info(fmt, ...) \
-	printk(KERN_INFO pr_fmt(fmt), ##__VA_ARGS__)
+	printk_store_fmt(KERN_INFO pr_fmt(fmt), ##__VA_ARGS__)
 
 /**
  * pr_cont - Continues a previous log message in the same line.
@@ -382,7 +424,7 @@ extern int kptr_restrict;
  * it defaults back to KERN_DEFAULT loglevel.
  */
 #define pr_cont(fmt, ...) \
-	printk(KERN_CONT fmt, ##__VA_ARGS__)
+	printk_store_fmt(KERN_CONT pr_fmt(fmt), ##__VA_ARGS__)
 
 /**
  * pr_devel - Print a debug-level message conditionally
@@ -396,7 +438,7 @@ extern int kptr_restrict;
  */
 #ifdef DEBUG
 #define pr_devel(fmt, ...) \
-	printk(KERN_DEBUG pr_fmt(fmt), ##__VA_ARGS__)
+	printk_store_fmt(KERN_DEBUG pr_fmt(fmt), ##__VA_ARGS__)
 #else
 #define pr_devel(fmt, ...) \
 	no_printk(KERN_DEBUG pr_fmt(fmt), ##__VA_ARGS__)
@@ -424,7 +466,7 @@ extern int kptr_restrict;
 	dynamic_pr_debug(fmt, ##__VA_ARGS__)
 #elif defined(DEBUG)
 #define pr_debug(fmt, ...) \
-	printk(KERN_DEBUG pr_fmt(fmt), ##__VA_ARGS__)
+	printk_store_fmt(KERN_DEBUG pr_fmt(fmt), ##__VA_ARGS__)
 #else
 #define pr_debug(fmt, ...) \
 	no_printk(KERN_DEBUG pr_fmt(fmt), ##__VA_ARGS__)
@@ -442,7 +484,7 @@ extern int kptr_restrict;
 								\
 	if (!__print_once) {					\
 		__print_once = true;				\
-		printk(fmt, ##__VA_ARGS__);			\
+		printk_store_fmt(fmt, ##__VA_ARGS__);		\
 	}							\
 	unlikely(__ret_print_once);				\
 })
@@ -509,7 +551,7 @@ extern int kptr_restrict;
 				      DEFAULT_RATELIMIT_BURST);		\
 									\
 	if (__ratelimit(&_rs))						\
-		printk(fmt, ##__VA_ARGS__);				\
+		printk_store_fmt(fmt, ##__VA_ARGS__);			\
 })
 #else
 #define printk_ratelimited(fmt, ...)					\
