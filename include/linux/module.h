@@ -516,6 +516,11 @@ struct module {
 	struct klp_modinfo *klp_info;
 #endif
 
+#ifdef CONFIG_PRINTK_ENUMERATION
+	unsigned int printk_fmts_sec_size;
+	const char **printk_fmts_start;
+#endif
+
 #ifdef CONFIG_MODULE_UNLOAD
 	/* What modules depend on me? */
 	struct list_head source_list;
