@@ -480,6 +480,13 @@
 									\
 	TRACEDATA							\
 									\
+	/* printk format strings */					\
+	.printk_fmts        : AT(ADDR(.printk_fmts) - LOAD_OFFSET) {	\
+		__start_printk_fmts = .;					\
+		KEEP(*(.printk_fmts))					\
+		__stop_printk_fmts = .;					\
+	}								\
+									\
 	/* Kernel symbol table: Normal symbols */			\
 	__ksymtab         : AT(ADDR(__ksymtab) - LOAD_OFFSET) {		\
 		__start___ksymtab = .;					\

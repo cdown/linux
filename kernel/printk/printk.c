@@ -47,6 +47,7 @@
 #include <linux/sched/clock.h>
 #include <linux/sched/debug.h>
 #include <linux/sched/task_stack.h>
+#include <linux/proc_fs.h>
 
 #include <linux/uaccess.h>
 #include <asm/sections.h>
@@ -616,6 +617,89 @@ static ssize_t msg_print_ext_body(char *buf, size_t size,
 out:
 	return len;
 }
+
+static void *proc_printk_formats_start(struct seq_file *s, loff_t *pos)
+{
+	loff_t *spos;
+	char *curfmt = __start_printk_fmts + *pos;
+
+	if (curfmt < __start_printk_fmts || curfmt >= __stop_printk_fmts)
+		return NULL;
+
+	spos = kmalloc(sizeof(loff_t), GFP_KERNEL);
+	if (!spos) {
+		pr_err("printk_formats: failed to allocate memory\n");
+		return NULL;
+	}
+
+	trace_printk("start read at %lld\n", *pos);
+	*spos = *pos;
+	return spos;
+}
+
+static void *proc_printk_formats_next(struct seq_file *s, void *v, loff_t *pos)
+{
+	loff_t *spos = v;
+	char *curfmt = __start_printk_fmts + *spos;
+
+	trace_printk("next starting at at spos %lld, pos %lld\n", *spos, *pos);
+	trace_printk("curfmt %p, __start_printk_fmts %p, __stop_printk_fmts %p\n", curfmt, __start_printk_fmts, __stop_printk_fmts);
+
+	if (curfmt < __start_printk_fmts || curfmt >= __stop_printk_fmts)
+		goto finish_seq;
+
+	while (curfmt < __stop_printk_fmts && *curfmt) {
+		++*spos;
+		++curfmt;
+	}
+	while (curfmt < __stop_printk_fmts && !*curfmt) {
+		++*spos;
+		++curfmt;
+	}
+
+	if (curfmt == __stop_printk_fmts)
+		goto finish_seq;
+
+	trace_printk("end of next\n");
+
+	*pos = *spos;
+	return spos;
+
+finish_seq:
+	*pos = *spos;
+	return NULL;
+}
+
+static void proc_printk_formats_stop(struct seq_file *s, void *v)
+{
+	kfree(v);
+}
+
+static int proc_printk_formats_show(struct seq_file *s, void *v)
+{
+	loff_t *spos = v;
+	char *curfmt = __start_printk_fmts + *spos;
+	trace_printk("show starting at at spos %lld\n", *spos);
+	trace_printk("curfmt %p, __start_printk_fmts %p, __stop_printk_fmts %p\n", curfmt, __start_printk_fmts, __stop_printk_fmts);
+	seq_puts(s, curfmt);
+        return 0;
+}
+
+static const struct seq_operations proc_printk_formats_ops = {
+	.start	= proc_printk_formats_start,
+	.next	= proc_printk_formats_next,
+	.stop	= proc_printk_formats_stop,
+	.show	= proc_printk_formats_show
+};
+
+static int __init proc_printk_formats_init(void)
+{
+	if (!proc_create_seq("printk_formats", 0, NULL, &proc_printk_formats_ops))
+		return -ENOMEM;
+
+	return 0;
+}
+core_initcall(proc_printk_formats_init);
 
 /* /dev/kmsg - userspace message inject/listen interface */
 struct devkmsg_user {
