@@ -173,12 +173,12 @@ asmlinkage __printf(1, 0)
 int vprintk(const char *fmt, va_list args);
 
 asmlinkage __printf(1, 2) __cold
-int printk(const char *fmt, ...);
+int _printk(const char *fmt, ...);
 
 /*
  * Special printk facility for scheduler/timekeeping use only, _DO_NOT_USE_ !
  */
-__printf(1, 2) __cold int printk_deferred(const char *fmt, ...);
+__printf(1, 2) __cold int _printk_deferred(const char *fmt, ...);
 
 /*
  * Please don't use printk_ratelimit(), because it shares ratelimiting state
@@ -216,12 +216,12 @@ int vprintk(const char *s, va_list args)
 	return 0;
 }
 static inline __printf(1, 2) __cold
-int printk(const char *s, ...)
+int _printk(const char *s, ...)
 {
 	return 0;
 }
 static inline __printf(1, 2) __cold
-int printk_deferred(const char *s, ...)
+int _printk_deferred(const char *s, ...)
 {
 	return 0;
 }
@@ -284,6 +284,11 @@ static inline void printk_safe_flush_on_panic(void)
 
 extern int kptr_restrict;
 
+#ifdef CONFIG_PRINTK_ENUMERATION
+extern const char *__start_printk_fmts[];
+extern const char *__stop_printk_fmts[];
+#endif
+
 /**
  * pr_fmt - used by the pr_*() macros to generate the printk format string
  * @fmt: format string passed from a pr_*() macro
@@ -300,6 +305,36 @@ extern int kptr_restrict;
 #ifndef pr_fmt
 #define pr_fmt(fmt) fmt
 #endif
+
+#ifdef CONFIG_PRINTK_ENUMERATION
+#define printk_store_fmt(func, fmt, ...)				       \
+	({								       \
+		int _printk_ret;					       \
+									       \
+		if (__builtin_constant_p(fmt)) {			       \
+			/*
+			 * The compiler may not be able to eliminate this, so
+			 * we need to make sure that it doesn't see any
+			 * hypothetical assignment for non-constants even
+			 * though this is already inside the
+			 * __builtin_constant_p guard.
+			 */						       \
+			static const char *_fmt __section(".printk_fmts") =    \
+				__builtin_constant_p(fmt) ? fmt : NULL;	       \
+			_printk_ret = func(_fmt, ##__VA_ARGS__);	       \
+		} else							       \
+			_printk_ret = func(fmt, ##__VA_ARGS__);		       \
+									       \
+		_printk_ret;						       \
+	})
+
+#define printk(fmt, ...) printk_store_fmt(_printk, fmt, ##__VA_ARGS__)
+#define printk_deferred(fmt, ...)					       \
+	printk_store_fmt(_printk_deferred, fmt, ##__VA_ARGS__)
+#else /* !CONFIG_PRINTK_ENUMERATION */
+#define printk(...) _printk(__VA_ARGS__)
+#define printk_deferred(...) _printk_deferred(__VA_ARGS__)
+#endif /* CONFIG_PRINTK_ENUMERATION */
 
 /**
  * pr_emerg - Print an emergency-level message
