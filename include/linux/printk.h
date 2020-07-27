@@ -284,6 +284,12 @@ static inline void printk_safe_flush_on_panic(void)
 
 extern int kptr_restrict;
 
+#ifdef CONFIG_PRINTK_ENUMERATION
+/* Barriers for printk format enumeration */
+extern char __start_printk_fmts[];
+extern char __stop_printk_fmts[];
+#endif
+
 /**
  * pr_fmt - used by the pr_*() macros to generate the printk format string
  * @fmt: format string passed from a pr_*() macro
@@ -301,6 +307,26 @@ extern int kptr_restrict;
 #define pr_fmt(fmt) fmt
 #endif
 
+#ifdef CONFIG_PRINTK_ENUMERATION
+#define _printk_store_fmt(var, fmt, ...)				       \
+	({								       \
+		int _printk_ret;					       \
+									       \
+		if (__builtin_constant_p(fmt)) {			       \
+			static const char var[] __section(".printk_fmts") =    \
+				fmt;					       \
+			_printk_ret = printk(var, ##__VA_ARGS__);	       \
+		} else							       \
+			_printk_ret = printk(fmt, ##__VA_ARGS__);	       \
+									       \
+		_printk_ret;						       \
+	})
+#define printk_store_fmt(fmt, ...) \
+	_printk_store_fmt(__UNIQUE_ID(__pr_), fmt, ##__VA_ARGS__)
+#else /* !CONFIG_PRINTK_ENUMERATION */
+#define printk_store_fmt printk
+#endif /* CONFIG_PRINTK_ENUMERATION */
+
 /**
  * pr_emerg - Print an emergency-level message
  * @fmt: format string
@@ -310,7 +336,7 @@ extern int kptr_restrict;
  * generate the format string.
  */
 #define pr_emerg(fmt, ...) \
-	printk(KERN_EMERG pr_fmt(fmt), ##__VA_ARGS__)
+	printk_store_fmt(KERN_EMERG pr_fmt(fmt), ##__VA_ARGS__)
 /**
  * pr_alert - Print an alert-level message
  * @fmt: format string
@@ -320,7 +346,7 @@ extern int kptr_restrict;
  * generate the format string.
  */
 #define pr_alert(fmt, ...) \
-	printk(KERN_ALERT pr_fmt(fmt), ##__VA_ARGS__)
+	printk_store_fmt(KERN_ALERT pr_fmt(fmt), ##__VA_ARGS__)
 /**
  * pr_crit - Print a critical-level message
  * @fmt: format string
@@ -330,7 +356,7 @@ extern int kptr_restrict;
  * generate the format string.
  */
 #define pr_crit(fmt, ...) \
-	printk(KERN_CRIT pr_fmt(fmt), ##__VA_ARGS__)
+	printk_store_fmt(KERN_CRIT pr_fmt(fmt), ##__VA_ARGS__)
 /**
  * pr_err - Print an error-level message
  * @fmt: format string
@@ -340,7 +366,8 @@ extern int kptr_restrict;
  * generate the format string.
  */
 #define pr_err(fmt, ...) \
-	printk(KERN_ERR pr_fmt(fmt), ##__VA_ARGS__)
+	printk_store_fmt(KERN_ERR pr_fmt(fmt), ##__VA_ARGS__)
+
 /**
  * pr_warn - Print a warning-level message
  * @fmt: format string
@@ -350,7 +377,7 @@ extern int kptr_restrict;
  * to generate the format string.
  */
 #define pr_warn(fmt, ...) \
-	printk(KERN_WARNING pr_fmt(fmt), ##__VA_ARGS__)
+	printk_store_fmt(KERN_WARNING pr_fmt(fmt), ##__VA_ARGS__)
 /**
  * pr_notice - Print a notice-level message
  * @fmt: format string
@@ -360,7 +387,8 @@ extern int kptr_restrict;
  * generate the format string.
  */
 #define pr_notice(fmt, ...) \
-	printk(KERN_NOTICE pr_fmt(fmt), ##__VA_ARGS__)
+	printk_store_fmt(KERN_NOTICE pr_fmt(fmt), ##__VA_ARGS__)
+
 /**
  * pr_info - Print an info-level message
  * @fmt: format string
@@ -370,7 +398,7 @@ extern int kptr_restrict;
  * generate the format string.
  */
 #define pr_info(fmt, ...) \
-	printk(KERN_INFO pr_fmt(fmt), ##__VA_ARGS__)
+	printk_store_fmt(KERN_INFO pr_fmt(fmt), ##__VA_ARGS__)
 
 /**
  * pr_cont - Continues a previous log message in the same line.
@@ -382,7 +410,7 @@ extern int kptr_restrict;
  * it defaults back to KERN_DEFAULT loglevel.
  */
 #define pr_cont(fmt, ...) \
-	printk(KERN_CONT fmt, ##__VA_ARGS__)
+	printk_store_fmt(KERN_CONT pr_fmt(fmt), ##__VA_ARGS__)
 
 /**
  * pr_devel - Print a debug-level message conditionally
@@ -396,7 +424,7 @@ extern int kptr_restrict;
  */
 #ifdef DEBUG
 #define pr_devel(fmt, ...) \
-	printk(KERN_DEBUG pr_fmt(fmt), ##__VA_ARGS__)
+	printk_store_fmt(KERN_DEBUG pr_fmt(fmt), ##__VA_ARGS__)
 #else
 #define pr_devel(fmt, ...) \
 	no_printk(KERN_DEBUG pr_fmt(fmt), ##__VA_ARGS__)
@@ -424,7 +452,7 @@ extern int kptr_restrict;
 	dynamic_pr_debug(fmt, ##__VA_ARGS__)
 #elif defined(DEBUG)
 #define pr_debug(fmt, ...) \
-	printk(KERN_DEBUG pr_fmt(fmt), ##__VA_ARGS__)
+	printk_store_fmt(KERN_DEBUG pr_fmt(fmt), ##__VA_ARGS__)
 #else
 #define pr_debug(fmt, ...) \
 	no_printk(KERN_DEBUG pr_fmt(fmt), ##__VA_ARGS__)
