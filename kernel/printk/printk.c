@@ -47,6 +47,7 @@
 #include <linux/sched/clock.h>
 #include <linux/sched/debug.h>
 #include <linux/sched/task_stack.h>
+#include <linux/proc_fs.h>
 
 #include <linux/uaccess.h>
 #include <asm/sections.h>
@@ -616,6 +617,176 @@ static ssize_t msg_print_ext_body(char *buf, size_t size,
 out:
 	return len;
 }
+
+#ifdef CONFIG_PRINTK_ENUMERATION
+
+/* /proc/printk_formats */
+
+struct printk_fmt_sec {
+	struct module *module;
+	struct list_head list;
+	const char *start;
+	const char *end;
+};
+
+static LIST_HEAD(printk_fmts_list);
+
+/*
+ * To avoid mutation over a certain lifetime, hold printk_fmts_mutex. Otherwise,
+ * this can be read at any time without the mutex as long as tearing is
+ * prevented.
+ */
+static size_t printk_fmts_total_size;
+
+/* For printk_fmts_list and printk_fmts_total_size. */
+static DEFINE_MUTEX(printk_fmts_mutex);
+
+static void store_printk_fmts(struct module *mod, const char *start,
+		const char *end)
+{
+	struct printk_fmt_sec *ps;
+
+	ps = kmalloc(sizeof(struct printk_fmt_sec), GFP_KERNEL);
+	if (!ps)
+		return;
+
+	ps->module = mod;
+	ps->start = start;
+	ps->end = end;
+
+	mutex_lock(&printk_fmts_mutex);
+
+	/*
+	 * Will be marginally larger than needed due to padding nulls, but
+	 * that's fine -- we just use this when deciding the buffer for the
+	 * seq_file.
+	 */
+	WRITE_ONCE(printk_fmts_total_size,
+		printk_fmts_total_size + (end - start));
+
+	list_add_tail(&ps->list, &printk_fmts_list);
+
+	mutex_unlock(&printk_fmts_mutex);
+}
+
+#ifdef CONFIG_MODULES
+
+static void destroy_printk_fmts(struct module *mod)
+{
+	struct printk_fmt_sec *tmp, *ps;
+
+	mutex_lock(&printk_fmts_mutex);
+
+	list_for_each_entry_safe(ps, tmp, &printk_fmts_list, list) {
+		if (ps->module == mod) {
+			WRITE_ONCE(printk_fmts_total_size,
+				printk_fmts_total_size - (ps->end - ps->start));
+			list_del(&ps->list);
+			kfree(ps);
+			break;
+		}
+	}
+
+	mutex_unlock(&printk_fmts_mutex);
+}
+
+static int module_printk_fmts_notify(struct notifier_block *self,
+				     unsigned long val, void *data)
+{
+	struct module *mod = data;
+
+	if (mod->printk_fmts_sec_size) {
+		switch (val) {
+		case MODULE_STATE_COMING:
+			store_printk_fmts(mod, mod->printk_fmts_start,
+				mod->printk_fmts_start + mod->printk_fmts_sec_size);
+			break;
+
+		case MODULE_STATE_GOING:
+			destroy_printk_fmts(mod);
+			break;
+		}
+	}
+	return NOTIFY_OK;
+}
+
+static struct notifier_block module_printk_fmts_nb = {
+	.notifier_call = module_printk_fmts_notify,
+};
+
+static int __init module_printk_fmts_init(void)
+{
+	register_module_notifier(&module_printk_fmts_nb);
+	return 0;
+}
+
+core_initcall(module_printk_fmts_init);
+
+#endif /* CONFIG_MODULES */
+
+static int proc_pf_show(struct seq_file *s, void *v)
+{
+	struct printk_fmt_sec *ps = NULL;
+
+	mutex_lock(&printk_fmts_mutex);
+
+	list_for_each_entry(ps, &printk_fmts_list, list) {
+		const char *fmt = ps->start;
+
+		while (fmt < ps->end) {
+			seq_puts(s, fmt);
+			seq_putc(s, '\0');
+			fmt += strlen(fmt);
+			while (fmt < ps->end && !*fmt)
+				fmt++;
+		}
+	}
+
+	mutex_unlock(&printk_fmts_mutex);
+
+	return 0;
+}
+
+static int proc_pf_release(struct inode *inode, struct file *file)
+{
+	return single_release(inode, file);
+}
+
+static int proc_pf_open(struct inode *inode, struct file *file)
+{
+	/*
+	 * We don't need to hold the mutex here to ensure that
+	 * printk_fmts_total_size doesn't change -- worst case, seq_read_iter
+	 * will reallocate.
+	 */
+	return single_open_size(file, proc_pf_show, NULL,
+		READ_ONCE(printk_fmts_total_size));
+}
+
+static const struct proc_ops printk_proc_ops = {
+	.proc_flags	= PROC_ENTRY_PERMANENT,
+	.proc_open	= proc_pf_open,
+	.proc_read_iter	= seq_read_iter,
+	.proc_lseek	= seq_lseek,
+	.proc_release	= proc_pf_release,
+};
+
+static int __init init_printk_fmts_list(void)
+{
+	store_printk_fmts(NULL, __start_printk_fmts, __stop_printk_fmts);
+	return 0;
+}
+
+static int __init init_printk_fmts_proc(void)
+{
+	proc_create("printk_formats", 0, NULL, &printk_proc_ops);
+	return 0;
+}
+
+core_initcall(init_printk_fmts_list);
+core_initcall(init_printk_fmts_proc);
+
+#endif /* CONFIG_PRINTK_ENUMERATION */
 
 /* /dev/kmsg - userspace message inject/listen interface */
 struct devkmsg_user {
