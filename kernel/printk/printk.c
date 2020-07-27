@@ -47,6 +47,8 @@
 #include <linux/sched/clock.h>
 #include <linux/sched/debug.h>
 #include <linux/sched/task_stack.h>
+#include <linux/debugfs.h>
+#include <linux/hashtable.h>
 
 #include <linux/uaccess.h>
 #include <asm/sections.h>
@@ -616,6 +618,222 @@ static ssize_t msg_print_ext_body(char *buf, size_t size,
 out:
 	return len;
 }
+
+#ifdef CONFIG_PRINTK_ENUMERATION
+
+/*
+ * debugfs/printk/formats/ - userspace enumeration of printk formats
+ *
+ * The format is the same as typically used by printk, <KERN_SOH><level>fmt,
+ * with each distinct format separated by \0.
+ */
+
+struct printk_fmt_sec {
+	struct hlist_node hnode;
+	struct module *module;
+	struct dentry *file;
+	const char **start;
+	const char **end;
+};
+
+/* The base dir for module formats, typically debugfs/printk/formats/ */
+struct dentry *dfs_formats;
+
+/*
+ * Stores .printk_fmt section boundaries for vmlinux and all loaded modules.
+ * Add entries with store_printk_fmt_sec, remove entries with
+ * remove_printk_fmt_sec.
+ */
+static DEFINE_HASHTABLE(printk_fmts_mod_sections, 8);
+
+/* Protects printk_fmts_mod_sections */
+static DEFINE_MUTEX(printk_fmts_mutex);
+
+static const char *ps_get_module_name(const struct printk_fmt_sec *ps);
+static int debugfs_pf_open(struct inode *inode, struct file *file);
+
+static const struct file_operations dfs_formats_fops = {
+	.open    = debugfs_pf_open,
+	.read    = seq_read,
+	.llseek  = seq_lseek,
+	.release = single_release,
+};
+
+static size_t printk_fmt_size(const char *fmt)
+{
+	size_t sz = strlen(fmt) + 1;
+
+	/*
+	 * Some printk formats don't start with KERN_SOH + level. We will add
+	 * it later when rendering the output.
+	 */
+	if (unlikely(fmt[0] != KERN_SOH_ASCII))
+		sz += 2;
+
+	return sz;
+}
+
+static struct printk_fmt_sec *find_printk_fmt_sec(struct module *mod)
+{
+	struct printk_fmt_sec *ps = NULL;
+
+	hash_for_each_possible(printk_fmts_mod_sections, ps, hnode,
+			       (unsigned long)mod)
+		if (ps->module == mod)
+			return ps;
+
+	return NULL;
+}
+
+static void store_printk_fmt_sec(struct module *mod, const char **start,
+				 const char **end)
+{
+	struct printk_fmt_sec *ps = NULL;
+	const char **fptr = NULL;
+	size_t size = 0;
+
+	ps = kmalloc(sizeof(struct printk_fmt_sec), GFP_KERNEL);
+	if (!ps)
+		return;
+
+	ps->module = mod;
+	ps->start = start;
+	ps->end = end;
+
+	for (fptr = ps->start; fptr < ps->end; fptr++)
+		size += printk_fmt_size(*fptr);
+
+	mutex_lock(&printk_fmts_mutex);
+	hash_add(printk_fmts_mod_sections, &ps->hnode, (unsigned long)mod);
+	mutex_unlock(&printk_fmts_mutex);
+
+	ps->file = debugfs_create_file(ps_get_module_name(ps), 0444,
+				       dfs_formats, mod, &dfs_formats_fops);
+
+	if (!IS_ERR(ps->file))
+		d_inode(ps->file)->i_size = size;
+}
+
+#ifdef CONFIG_MODULES
+static void remove_printk_fmt_sec(struct module *mod)
+{
+	struct printk_fmt_sec *ps = NULL;
+
+	if (WARN_ON_ONCE(!mod))
+		return;
+
+	mutex_lock(&printk_fmts_mutex);
+
+	ps = find_printk_fmt_sec(mod);
+	if (!ps) {
+		mutex_unlock(&printk_fmts_mutex);
+		return;
+	}
+
+	hash_del(&ps->hnode);
+
+	mutex_unlock(&printk_fmts_mutex);
+
+	debugfs_remove(ps->file);
+	kfree(ps);
+}
+
+static int module_printk_fmts_notify(struct notifier_block *self,
+				     unsigned long val, void *data)
+{
+	struct module *mod = data;
+
+	if (mod->printk_fmts_sec_size) {
+		switch (val) {
+		case MODULE_STATE_COMING:
+			store_printk_fmt_sec(mod, mod->printk_fmts_start,
+					     mod->printk_fmts_start +
+						     mod->printk_fmts_sec_size);
+			break;
+
+		case MODULE_STATE_GOING:
+			remove_printk_fmt_sec(mod);
+			break;
+		}
+	}
+
+	return NOTIFY_OK;
+}
+
+static const char *ps_get_module_name(const struct printk_fmt_sec *ps)
+{
+	return ps->module ? ps->module->name : "vmlinux";
+}
+
+static struct notifier_block module_printk_fmts_nb = {
+	.notifier_call = module_printk_fmts_notify,
+};
+
+static int __init module_printk_fmts_init(void)
+{
+	return register_module_notifier(&module_printk_fmts_nb);
+}
+
+core_initcall(module_printk_fmts_init);
+
+#else /* !CONFIG_MODULES */
+static const char *ps_get_module_name(const struct printk_fmt_sec *ps)
+{
+	return "vmlinux";
+}
+#endif /* CONFIG_MODULES */
+
+static int debugfs_pf_show(struct seq_file *s, void *v)
+{
+	struct module *mod = s->file->f_inode->i_private;
+	struct printk_fmt_sec *ps = NULL;
+	const char **fptr = NULL;
+	int ret = 0;
+
+	mutex_lock(&printk_fmts_mutex);
+
+	/*
+	 * The entry might have been invalidated in the hlist between _open and
+	 * _show, so we need to eyeball the entries under printk_fmts_mutex
+	 * again.
+	 */
+	ps = find_printk_fmt_sec(mod);
+	if (unlikely(!ps)) {
+		ret = -ENOENT;
+		goto out_unlock;
+	}
+
+	for (fptr = ps->start; fptr < ps->end; fptr++) {
+		/* For callsites without KERN_SOH + level preamble. */
+		if (unlikely(*fptr[0] != KERN_SOH_ASCII))
+			seq_printf(s, "%c%d", KERN_SOH_ASCII,
+				   MESSAGE_LOGLEVEL_DEFAULT);
+		seq_printf(s, "%s%c", *fptr, '\0');
+	}
+
+out_unlock:
+	mutex_unlock(&printk_fmts_mutex);
+	return ret;
+}
+
+static int debugfs_pf_open(struct inode *inode, struct file *file)
+{
+	return single_open_size(file, debugfs_pf_show, NULL, inode->i_size);
+}
+
+static int __init init_printk_fmts(void)
+{
+	struct dentry *dfs_root = debugfs_create_dir("printk", NULL);
+
+	dfs_formats = debugfs_create_dir("formats", dfs_root);
+	store_printk_fmt_sec(NULL, __start_printk_fmts, __stop_printk_fmts);
+
+	return 0;
+}
+
+core_initcall(init_printk_fmts);
+
+#endif /* CONFIG_PRINTK_ENUMERATION */
 
 /* /dev/kmsg - userspace message inject/listen interface */
 struct devkmsg_user {
@@ -2111,10 +2329,13 @@ int vprintk_default(const char *fmt, va_list args)
 EXPORT_SYMBOL_GPL(vprintk_default);
 
 /**
- * printk - print a kernel message
+ * _printk - print a kernel message
  * @fmt: format string
  *
- * This is printk(). It can be called from any context. We want it to work.
+ * This is _printk(). It can be called from any context. We want it to work.
+ *
+ * If printk enumeration is enabled, _printk() is called from printk_store_fmt.
+ * Otherwise, printk is simply #defined to _printk.
  *
  * We try to grab the console_lock. If we succeed, it's easy - we log the
  * output and call the console drivers.  If we fail to get the semaphore, we
@@ -2131,7 +2352,7 @@ EXPORT_SYMBOL_GPL(vprintk_default);
  *
  * See the vsnprintf() documentation for format string extensions over C99.
  */
-asmlinkage __visible int printk(const char *fmt, ...)
+asmlinkage __visible int _printk(const char *fmt, ...)
 {
 	va_list args;
 	int r;
@@ -2142,7 +2363,7 @@ asmlinkage __visible int printk(const char *fmt, ...)
 
 	return r;
 }
-EXPORT_SYMBOL(printk);
+EXPORT_SYMBOL(_printk);
 
 #else /* CONFIG_PRINTK */
 
@@ -3133,7 +3354,7 @@ int vprintk_deferred(const char *fmt, va_list args)
 	return r;
 }
 
-int printk_deferred(const char *fmt, ...)
+int _printk_deferred(const char *fmt, ...)
 {
 	va_list args;
 	int r;
