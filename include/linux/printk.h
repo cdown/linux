@@ -173,12 +173,12 @@ asmlinkage __printf(1, 0)
 int vprintk(const char *fmt, va_list args);
 
 asmlinkage __printf(1, 2) __cold
-int printk(const char *fmt, ...);
+int _printk(const char *fmt, ...);
 
 /*
  * Special printk facility for scheduler/timekeeping use only, _DO_NOT_USE_ !
  */
-__printf(1, 2) __cold int printk_deferred(const char *fmt, ...);
+__printf(1, 2) __cold int _printk_deferred(const char *fmt, ...);
 
 /*
  * Please don't use printk_ratelimit(), because it shares ratelimiting state
@@ -216,12 +216,12 @@ int vprintk(const char *s, va_list args)
 	return 0;
 }
 static inline __printf(1, 2) __cold
-int printk(const char *s, ...)
+int _printk(const char *s, ...)
 {
 	return 0;
 }
 static inline __printf(1, 2) __cold
-int printk_deferred(const char *s, ...)
+int _printk_deferred(const char *s, ...)
 {
 	return 0;
 }
@@ -300,6 +300,61 @@ extern int kptr_restrict;
 #ifndef pr_fmt
 #define pr_fmt(fmt) fmt
 #endif
+
+struct module;
+
+#ifdef CONFIG_PRINTK_INDEX
+extern void pi_create_file(struct module *mod);
+extern void pi_remove_file(struct module *mod);
+
+struct pi_entry {
+	const char *fmt;
+	const char *func;
+	const char *file;
+	unsigned int line;
+};
+
+#define __printk_index_emit(_fmt, ...)					       \
+	do {								       \
+		if (__builtin_constant_p(_fmt)) {			       \
+			/*
+			 * The compiler may not be able to eliminate this, so
+			 * we need to make sure that it doesn't see any
+			 * hypothetical assignment for non-constants even
+			 * though this is already inside the
+			 * __builtin_constant_p guard.
+			 */						       \
+			static const struct pi_entry _entry		       \
+			__used __section(".printk_index") = {		       \
+				.fmt = __builtin_constant_p(_fmt) ? (_fmt) : NULL, \
+				.func = __func__,			       \
+				.file = __FILE__,			       \
+				.line = __LINE__,			       \
+			};						       \
+		}							       \
+	} while (0)
+#else /* !CONFIG_PRINTK_INDEX */
+static inline void pi_create_file(struct module *mod)
+{
+}
+
+static inline void pi_remove_file(struct module *mod)
+{
+}
+
+#define __printk_index_emit(_fmt, ...) do {} while (0)
+#endif /* CONFIG_PRINTK_INDEX */
+
+#define printk_index_wrap(_p_func, _fmt, ...)				       \
+	({								       \
+		__printk_index_emit(_fmt);				       \
+		_p_func(_fmt, ##__VA_ARGS__);				       \
+	})
+
+
+#define printk(fmt, ...) printk_index_wrap(_printk, fmt, ##__VA_ARGS__)
+#define printk_deferred(fmt, ...)					       \
+	printk_index_wrap(_printk_deferred, fmt, ##__VA_ARGS__)
 
 /**
  * pr_emerg - Print an emergency-level message
