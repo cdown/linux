@@ -47,6 +47,7 @@
 #include <linux/sched/clock.h>
 #include <linux/sched/debug.h>
 #include <linux/sched/task_stack.h>
+#include <linux/proc_fs.h>
 
 #include <linux/uaccess.h>
 #include <asm/sections.h>
@@ -616,6 +617,175 @@ static ssize_t msg_print_ext_body(char *buf, size_t size,
 out:
 	return len;
 }
+
+#ifdef CONFIG_PRINTK_ENUMERATION
+
+/* /proc/printk_formats - userspace enumeration of printk formats  */
+
+struct printk_fmt_sec {
+	struct list_head list;
+	const struct module *module;
+	const char **start;
+	const char **end;
+};
+
+/*
+ * Stores .printk_fmt section boundaries for vmlinux and all loaded modules.
+ * Add entries with store_printk_fmt_sec, remove entries with
+ * remove_printk_fmt_sec.
+ */
+static LIST_HEAD(printk_fmts_list);
+
+/*
+ * To avoid mutation over a certain lifetime, hold printk_fmts_mutex. Otherwise,
+ * this can be read at any time without the mutex as long as tearing is
+ * prevented.
+ */
+static size_t printk_fmts_total_size;
+
+/* For printk_fmts_list and printk_fmts_total_size. */
+static DEFINE_MUTEX(printk_fmts_mutex);
+
+static void store_printk_fmt_sec(const struct module *mod, const char **start,
+		const char **end)
+{
+	struct printk_fmt_sec *ps = NULL;
+	const char **fptr = NULL;
+	size_t size = 0;
+
+	ps = kmalloc(sizeof(struct printk_fmt_sec), GFP_KERNEL);
+	if (!ps)
+		return;
+
+	ps->module = mod;
+	ps->start = start;
+	ps->end = end;
+
+	for (fptr = ps->start; fptr < ps->end; fptr++)
+		if (fptr)
+			size += strlen(*fptr) + 1;
+
+	mutex_lock(&printk_fmts_mutex);
+	WRITE_ONCE(printk_fmts_total_size, printk_fmts_total_size + size);
+	list_add_tail(&ps->list, &printk_fmts_list);
+	mutex_unlock(&printk_fmts_mutex);
+}
+
+#ifdef CONFIG_MODULES
+
+static void remove_printk_fmt_sec(const struct module *mod)
+{
+	struct printk_fmt_sec *tmp = NULL, *ps = NULL;
+	const char **fptr = NULL;
+
+	if (WARN_ON(!mod))
+		return;
+
+	mutex_lock(&printk_fmts_mutex);
+
+	list_for_each_entry_safe(ps, tmp, &printk_fmts_list, list) {
+		if (ps->module == mod) {
+			size_t new_size = printk_fmts_total_size;
+
+			for (fptr = ps->start; fptr < ps->end; fptr++)
+				if (fptr)
+					new_size -= strlen(*fptr) + 1;
+
+			WRITE_ONCE(printk_fmts_total_size, new_size);
+			list_del(&ps->list);
+			kfree(ps);
+			break;
+		}
+	}
+
+	mutex_unlock(&printk_fmts_mutex);
+}
+
+static int module_printk_fmts_notify(struct notifier_block *self,
+				     unsigned long val, void *data)
+{
+	const struct module *mod = data;
+
+	if (mod->printk_fmts_sec_size) {
+		switch (val) {
+		case MODULE_STATE_COMING:
+			store_printk_fmt_sec(mod, mod->printk_fmts_start,
+				mod->printk_fmts_start + mod->printk_fmts_sec_size);
+			break;
+
+		case MODULE_STATE_GOING:
+			remove_printk_fmt_sec(mod);
+			break;
+		}
+	}
+
+	return NOTIFY_OK;
+}
+
+static struct notifier_block module_printk_fmts_nb = {
+	.notifier_call = module_printk_fmts_notify,
+};
+
+static int __init module_printk_fmts_init(void)
+{
+	return register_module_notifier(&module_printk_fmts_nb);
+}
+
+core_initcall(module_printk_fmts_init);
+
+#endif /* CONFIG_MODULES */
+
+static int proc_pf_show(struct seq_file *s, void *v)
+{
+	const struct printk_fmt_sec *ps = NULL;
+	const char **fptr = NULL;
+
+	mutex_lock(&printk_fmts_mutex);
+
+	list_for_each_entry(ps, &printk_fmts_list, list) {
+		for (fptr = ps->start; fptr < ps->end; fptr++) {
+			if (fptr) {
+				seq_puts(s, *fptr);
+				seq_putc(s, '\0');
+			}
+		}
+	}
+
+	mutex_unlock(&printk_fmts_mutex);
+
+	return 0;
+}
+
+static int proc_pf_open(struct inode *inode, struct file *file)
+{
+	/*
+	 * We don't need to hold the mutex here to ensure that
+	 * printk_fmts_total_size doesn't change prior to iteration -- worst
+	 * case, seq_read_iter will reallocate.
+	 */
+	return single_open_size(file, proc_pf_show, NULL,
+		READ_ONCE(printk_fmts_total_size));
+}
+
+static const struct proc_ops printk_proc_ops = {
+	.proc_flags	= PROC_ENTRY_PERMANENT,
+	.proc_open	= proc_pf_open,
+	.proc_read_iter	= seq_read_iter,
+	.proc_lseek	= seq_lseek,
+	.proc_release	= single_release,
+};
+
+static int __init init_printk_fmts(void)
+{
+	const struct proc_dir_entry *pd;
+	store_printk_fmt_sec(NULL, __start_printk_fmts, __stop_printk_fmts);
+	pd = proc_create("printk_formats", 0, NULL, &printk_proc_ops);
+	return pd ? 0 : -ENOMEM;
+}
+
+core_initcall(init_printk_fmts);
+
+#endif /* CONFIG_PRINTK_ENUMERATION */
 
 /* /dev/kmsg - userspace message inject/listen interface */
 struct devkmsg_user {
@@ -2111,10 +2281,13 @@ int vprintk_default(const char *fmt, va_list args)
 EXPORT_SYMBOL_GPL(vprintk_default);
 
 /**
- * printk - print a kernel message
+ * _printk - print a kernel message
  * @fmt: format string
  *
- * This is printk(). It can be called from any context. We want it to work.
+ * This is _printk(). It can be called from any context. We want it to work.
+ *
+ * If printk enumeration is enabled, _printk() is called from printk_store_fmt.
+ * Otherwise, printk is simply #defined to _printk.
  *
  * We try to grab the console_lock. If we succeed, it's easy - we log the
  * output and call the console drivers.  If we fail to get the semaphore, we
@@ -2131,7 +2304,7 @@ EXPORT_SYMBOL_GPL(vprintk_default);
  *
  * See the vsnprintf() documentation for format string extensions over C99.
  */
-asmlinkage __visible int printk(const char *fmt, ...)
+asmlinkage __visible int _printk(const char *fmt, ...)
 {
 	va_list args;
 	int r;
@@ -2142,7 +2315,7 @@ asmlinkage __visible int printk(const char *fmt, ...)
 
 	return r;
 }
-EXPORT_SYMBOL(printk);
+EXPORT_SYMBOL(_printk);
 
 #else /* CONFIG_PRINTK */
 
@@ -3133,7 +3306,7 @@ int vprintk_deferred(const char *fmt, va_list args)
 	return r;
 }
 
-int printk_deferred(const char *fmt, ...)
+int _printk_deferred(const char *fmt, ...)
 {
 	va_list args;
 	int r;
