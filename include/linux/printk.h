@@ -279,6 +279,10 @@ static inline void printk_safe_flush_on_panic(void)
 
 extern int kptr_restrict;
 
+/* Barriers for printk format enumeration */
+extern const char *__start___printk_fmts[];
+extern const char *__stop___printk_fmts[];
+
 /**
  * pr_fmt - used by the pr_*() macros to generate the printk format string
  * @fmt: format string passed from a pr_*() macro
@@ -296,6 +300,16 @@ extern int kptr_restrict;
 #define pr_fmt(fmt) fmt
 #endif
 
+#define _printk_store_fmt(var, fmt, ...)                                       \
+	({                                                                     \
+		static const char var[]                                        \
+			__attribute__((section("printk_fmts"))) = fmt;         \
+		printk(var, ##__VA_ARGS__);                                    \
+	})
+
+#define printk_store_fmt(fmt, ...)                                             \
+	_printk_store_fmt(__UNIQUE_ID(__pr_), fmt, ##__VA_ARGS__)
+
 /**
  * pr_emerg - Print an emergency-level message
  * @fmt: format string
@@ -305,7 +319,12 @@ extern int kptr_restrict;
  * generate the format string.
  */
 #define pr_emerg(fmt, ...) \
-	printk(KERN_EMERG pr_fmt(fmt), ##__VA_ARGS__)
+	do {                                                                   \
+		if (__builtin_constant_p(fmt))                                 \
+			printk_store_fmt(KERN_EMERG pr_fmt(fmt), ##__VA_ARGS__); \
+		else                                                           \
+			printk(KERN_EMERG pr_fmt(fmt), ##__VA_ARGS__);           \
+	} while (0)
 /**
  * pr_alert - Print an alert-level message
  * @fmt: format string
@@ -315,7 +334,12 @@ extern int kptr_restrict;
  * generate the format string.
  */
 #define pr_alert(fmt, ...) \
-	printk(KERN_ALERT pr_fmt(fmt), ##__VA_ARGS__)
+	do {                                                                   \
+		if (__builtin_constant_p(fmt))                                 \
+			printk_store_fmt(KERN_ALERT pr_fmt(fmt), ##__VA_ARGS__); \
+		else                                                           \
+			printk(KERN_ALERT pr_fmt(fmt), ##__VA_ARGS__);           \
+	} while (0)
 /**
  * pr_crit - Print a critical-level message
  * @fmt: format string
@@ -325,7 +349,12 @@ extern int kptr_restrict;
  * generate the format string.
  */
 #define pr_crit(fmt, ...) \
-	printk(KERN_CRIT pr_fmt(fmt), ##__VA_ARGS__)
+	do {                                                                   \
+		if (__builtin_constant_p(fmt))                                 \
+			printk_store_fmt(KERN_CRIT pr_fmt(fmt), ##__VA_ARGS__); \
+		else                                                           \
+			printk(KERN_CRIT pr_fmt(fmt), ##__VA_ARGS__);           \
+	} while (0)
 /**
  * pr_err - Print an error-level message
  * @fmt: format string
@@ -334,8 +363,14 @@ extern int kptr_restrict;
  * This macro expands to a printk with KERN_ERR loglevel. It uses pr_fmt() to
  * generate the format string.
  */
-#define pr_err(fmt, ...) \
-	printk(KERN_ERR pr_fmt(fmt), ##__VA_ARGS__)
+#define pr_err(fmt, ...)                                                       \
+	do {                                                                   \
+		if (__builtin_constant_p(fmt))                                 \
+			printk_store_fmt(KERN_ERR pr_fmt(fmt), ##__VA_ARGS__); \
+		else                                                           \
+			printk(KERN_ERR pr_fmt(fmt), ##__VA_ARGS__);           \
+	} while (0)
+
 /**
  * pr_warn - Print a warning-level message
  * @fmt: format string
@@ -345,7 +380,12 @@ extern int kptr_restrict;
  * to generate the format string.
  */
 #define pr_warn(fmt, ...) \
-	printk(KERN_WARNING pr_fmt(fmt), ##__VA_ARGS__)
+	do {                                                                   \
+		if (__builtin_constant_p(fmt))                                 \
+			printk_store_fmt(KERN_WARNING pr_fmt(fmt), ##__VA_ARGS__); \
+		else                                                           \
+			printk(KERN_WARNING pr_fmt(fmt), ##__VA_ARGS__);           \
+	} while (0)
 /**
  * pr_notice - Print a notice-level message
  * @fmt: format string
@@ -355,7 +395,13 @@ extern int kptr_restrict;
  * generate the format string.
  */
 #define pr_notice(fmt, ...) \
-	printk(KERN_NOTICE pr_fmt(fmt), ##__VA_ARGS__)
+	do {                                                                   \
+		if (__builtin_constant_p(fmt))                                 \
+			printk_store_fmt(KERN_NOTICE pr_fmt(fmt), ##__VA_ARGS__); \
+		else                                                           \
+			printk(KERN_NOTICE pr_fmt(fmt), ##__VA_ARGS__);           \
+	} while (0)
+
 /**
  * pr_info - Print an info-level message
  * @fmt: format string
@@ -365,7 +411,12 @@ extern int kptr_restrict;
  * generate the format string.
  */
 #define pr_info(fmt, ...) \
-	printk(KERN_INFO pr_fmt(fmt), ##__VA_ARGS__)
+	do {                                                                   \
+		if (__builtin_constant_p(fmt))                                 \
+			printk_store_fmt(KERN_INFO pr_fmt(fmt), ##__VA_ARGS__); \
+		else                                                           \
+			printk(KERN_INFO pr_fmt(fmt), ##__VA_ARGS__);           \
+	} while (0)
 
 /**
  * pr_cont - Continues a previous log message in the same line.
@@ -377,7 +428,12 @@ extern int kptr_restrict;
  * it defaults back to KERN_DEFAULT loglevel.
  */
 #define pr_cont(fmt, ...) \
-	printk(KERN_CONT fmt, ##__VA_ARGS__)
+	do {                                                                   \
+		if (__builtin_constant_p(fmt))                                 \
+			printk_store_fmt(KERN_CONT fmt, ##__VA_ARGS__); \
+		else                                                           \
+			printk(KERN_CONT fmt, ##__VA_ARGS__);           \
+	} while (0)
 
 /**
  * pr_devel - Print a debug-level message conditionally

@@ -449,6 +449,13 @@
 		__end_pci_fixups_suspend_late = .;			\
 	}								\
 									\
+	/* printk format strings */					\
+	.printk_fmts        : AT(ADDR(.printk_fmts) - LOAD_OFFSET) {	\
+		__start_printk_fmts = .;				\
+		KEEP(*(.printk_fmts))					\
+		__end_printk_fmts = .;					\
+	}								\
+									\
 	/* Built-in firmware blobs */					\
 	.builtin_fw        : AT(ADDR(.builtin_fw) - LOAD_OFFSET) {	\
 		__start_builtin_fw = .;					\
