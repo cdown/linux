@@ -1957,7 +1957,7 @@ static inline u32 printk_caller_id(void)
 }
 
 /**
- * parse_prefix - Parse level and control flags.
+ * printk_parse_prefix - Parse level and control flags.
  *
  * @text:     The terminated text message.
  * @level:    A pointer to the current level value, will be updated.
@@ -1973,7 +1973,7 @@ static inline u32 printk_caller_id(void)
  *
  * Return: The length of the parsed level and control flags.
  */
-static u16 parse_prefix(char *text, int *level,
+u16 printk_parse_prefix(const char *text, int *level,
 			enum printk_info_flags *flags)
 {
 	u16 prefix_len = 0;
@@ -2019,7 +2019,7 @@ static u16 printk_sprint(char *text, u16 size, int facility,
 	if (facility == 0) {
 		u16 prefix_len;
 
-		prefix_len = parse_prefix(text, NULL, NULL);
+		prefix_len = printk_parse_prefix(text, NULL, NULL);
 		if (prefix_len) {
 			text_len -= prefix_len;
 			memmove(text, text + prefix_len, text_len);
@@ -2068,7 +2068,7 @@ int vprintk_store(int facility, int level,
 
 	/* Extract log level or control flags. */
 	if (facility == 0)
-		parse_prefix(&prefix_buf[0], &level, &flags);
+		printk_parse_prefix(&prefix_buf[0], &level, &flags);
 
 	if (level == LOGLEVEL_DEFAULT)
 		level = default_message_loglevel;
@@ -2185,10 +2185,13 @@ int vprintk_default(const char *fmt, va_list args)
 EXPORT_SYMBOL_GPL(vprintk_default);
 
 /**
- * printk - print a kernel message
+ * _printk - print a kernel message
  * @fmt: format string
  *
- * This is printk(). It can be called from any context. We want it to work.
+ * This is _printk(). It can be called from any context. We want it to work.
+ *
+ * If printk indexing is enabled, _printk() is called from printk_index_wrap.
+ * Otherwise, printk is simply #defined to _printk.
  *
  * We try to grab the console_lock. If we succeed, it's easy - we log the
  * output and call the console drivers.  If we fail to get the semaphore, we
@@ -2205,7 +2208,7 @@ EXPORT_SYMBOL_GPL(vprintk_default);
  *
  * See the vsnprintf() documentation for format string extensions over C99.
  */
-asmlinkage __visible int printk(const char *fmt, ...)
+asmlinkage __visible int _printk(const char *fmt, ...)
 {
 	va_list args;
 	int r;
@@ -2216,7 +2219,7 @@ asmlinkage __visible int printk(const char *fmt, ...)
 
 	return r;
 }
-EXPORT_SYMBOL(printk);
+EXPORT_SYMBOL(_printk);
 
 #else /* CONFIG_PRINTK */
 
@@ -3201,7 +3204,7 @@ int vprintk_deferred(const char *fmt, va_list args)
 	return r;
 }
 
-int printk_deferred(const char *fmt, ...)
+int _printk_deferred(const char *fmt, ...)
 {
 	va_list args;
 	int r;
