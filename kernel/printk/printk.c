@@ -93,8 +93,9 @@ EXPORT_SYMBOL_GPL(console_drivers);
  */
 int __read_mostly suppress_printk;
 
-static struct kset *printk_kset;
-static struct kobject printk_formats_kobj;
+static struct kobject *printk_kobj;
+static struct kobject printk_fmt_kobj;
+static struct device_attribute printk_fmt_attr;
 
 #ifdef CONFIG_LOCKDEP
 static struct lockdep_map console_lock_dep_map = {
@@ -995,37 +996,26 @@ void log_buf_vmcoreinfo_setup(void)
 }
 #endif
 
-static ssize_t printk_formats_show(struct kobject *kobj,
-				   struct attribute *attr, char *buf)
+static ssize_t printk_formats_show(struct device *d,
+				   struct device_attribute *attr, char *buf)
 {
 	return scnprintf(buf, PAGE_SIZE, "test formats\n");
 }
-
-static const struct sysfs_ops printk_formats_sysfs_ops = {
-	.show = printk_formats_show,
-};
-
-static struct kobj_type printk_formats_ktype = {
-	.sysfs_ops = &printk_formats_sysfs_ops,
-	.release = NULL,
-};
-
 
 static int __init init_printk_sysfs(void)
 {
 	int ret;
 
-	const struct attribute at = {
-		.name = "formats",
-		.mode = 0444,
-	};
+	printk_fmt_attr.attr.name = "formats";
+	printk_fmt_attr.attr.mode = 0444;
+	printk_fmt_attr.show = printk_formats_show;
+	printk_fmt_attr.store = NULL;
 
-	printk_kset = kset_create_and_add("printk", NULL, kernel_kobj);
-	if (!printk_kset)
+	printk_kobj = kobject_create_and_add("printk", kernel_kobj);
+	if (!printk_kobj)
 		return -ENOMEM;
 
-	ret = kobject_init_and_add(&printk_formats_kobj, &printk_formats_ktype,
-				   &printk_kset->kobj, "formats");
+	ret = sysfs_create_file(&printk_fmt_kobj, &printk_fmt_attr.attr);
 	if (ret)
 		return -ENOMEM;
 
