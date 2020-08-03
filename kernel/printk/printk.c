@@ -94,6 +94,13 @@ EXPORT_SYMBOL_GPL(console_drivers);
 int __read_mostly suppress_printk;
 
 static struct kset *printk_kset;
+static struct kobject printk_formats_kobj;
+static const struct sysfs_ops printk_sysfs_ops = {
+	NULL
+};
+static struct kobj_type printk_ktype = {
+	.sysfs_ops = &printk_sysfs_ops,
+};
 
 #ifdef CONFIG_LOCKDEP
 static struct lockdep_map console_lock_dep_map = {
@@ -996,9 +1003,17 @@ void log_buf_vmcoreinfo_setup(void)
 
 static int __init init_printk_sysfs(void)
 {
+	int ret;
+
 	printk_kset = kset_create_and_add("printk", NULL, kernel_kobj);
 	if (!printk_kset)
 		return -ENOMEM;
+
+	printk_formats_kobj.kset = printk_kset;
+	ret = kobject_init_and_add(&printk_formats_kobj, &printk_ktype, NULL, "formats");
+	if (ret)
+		return -ENOMEM;
+
 	return 0;
 }
 core_initcall(init_printk_sysfs);
