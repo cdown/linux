@@ -95,12 +95,6 @@ int __read_mostly suppress_printk;
 
 static struct kset *printk_kset;
 static struct kobject printk_formats_kobj;
-static const struct sysfs_ops printk_sysfs_ops = {
-	NULL
-};
-static struct kobj_type printk_ktype = {
-	.sysfs_ops = &printk_sysfs_ops,
-};
 
 #ifdef CONFIG_LOCKDEP
 static struct lockdep_map console_lock_dep_map = {
@@ -1005,12 +999,17 @@ static int __init init_printk_sysfs(void)
 {
 	int ret;
 
+	const struct attribute at = {
+		.name = "formats",
+		.mode = 0444,
+	};
+
 	printk_kset = kset_create_and_add("printk", NULL, kernel_kobj);
 	if (!printk_kset)
 		return -ENOMEM;
 
 	printk_formats_kobj.kset = printk_kset;
-	ret = kobject_init_and_add(&printk_formats_kobj, &printk_ktype, NULL, "formats");
+	ret = sysfs_create_file(&printk_formats_kobj, &at);
 	if (ret)
 		return -ENOMEM;
 
