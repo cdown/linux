@@ -1024,7 +1024,8 @@ static int __init init_printk_sysfs(void)
 	if (!printk_kset)
 		return -ENOMEM;
 
-	ret = sysfs_create_file(&printk_kset->kobj, &at);
+	ret = kobject_init_and_add(&printk_formats_kobj, &printk_formats_ktype,
+				   &printk_kset->kobj, "formats");
 	if (ret)
 		return -ENOMEM;
 
