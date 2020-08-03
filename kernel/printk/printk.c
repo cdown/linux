@@ -93,6 +93,8 @@ EXPORT_SYMBOL_GPL(console_drivers);
  */
 int __read_mostly suppress_printk;
 
+static struct kset *printk_kset;
+
 #ifdef CONFIG_LOCKDEP
 static struct lockdep_map console_lock_dep_map = {
 	.name = "console_lock"
@@ -991,6 +993,15 @@ void log_buf_vmcoreinfo_setup(void)
 	VMCOREINFO_TYPE_OFFSET(atomic_long_t, counter);
 }
 #endif
+
+static int __init init_printk_sysfs(void)
+{
+	printk_kset = kset_create_and_add("printk", NULL, kernel_kobj);
+	if (!printk_kset)
+		return -ENOMEM;
+	return 0;
+}
+core_initcall(init_printk_sysfs);
 
 /* requested log_buf_len from kernel cmdline */
 static unsigned long __initdata new_log_buf_len;
