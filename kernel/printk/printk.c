@@ -995,6 +995,22 @@ void log_buf_vmcoreinfo_setup(void)
 }
 #endif
 
+static ssize_t printk_formats_show(struct kobject *kobj,
+				   struct attribute *attr, char *buf)
+{
+	return scnprintf(buf, PAGE_SIZE, "test formats\n");
+}
+
+static const struct sysfs_ops printk_formats_sysfs_ops = {
+	.show = printk_formats_show,
+};
+
+static struct kobj_type printk_formats_ktype = {
+	.sysfs_ops = &printk_formats_sysfs_ops,
+	.release = NULL,
+};
+
+
 static int __init init_printk_sysfs(void)
 {
 	int ret;
