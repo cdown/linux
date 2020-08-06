@@ -237,6 +237,11 @@
 #define TRACEPOINT_STR()
 #endif
 
+/* TODO: config */
+#define PRINTK_FMT() __start___printk_fmt = .;	\
+		     KEEP(*(__printk_fmt)) \
+		     __stop___printk_fmt = .;
+
 #ifdef CONFIG_FTRACE_SYSCALLS
 #define TRACE_SYSCALLS() . = ALIGN(8);					\
 			 __start_syscalls_metadata = .;			\
@@ -346,7 +351,8 @@
 	BRANCH_PROFILE()						\
 	TRACE_PRINTKS()							\
 	BPF_RAW_TP()							\
-	TRACEPOINT_STR()
+	TRACEPOINT_STR()						\
+	PRINTK_FMT()
 
 /*
  * Data section helpers
@@ -447,13 +453,6 @@
 		__start_pci_fixups_suspend_late = .;			\
 		KEEP(*(.pci_fixup_suspend_late))			\
 		__end_pci_fixups_suspend_late = .;			\
-	}								\
-									\
-	/* printk format strings */					\
-	.printk_fmts        : AT(ADDR(.printk_fmts) - LOAD_OFFSET) {	\
-		__start_printk_fmts = .;				\
-		KEEP(*(.printk_fmts))					\
-		__end_printk_fmts = .;					\
 	}								\
 									\
 	/* Built-in firmware blobs */					\

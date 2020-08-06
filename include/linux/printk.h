@@ -280,8 +280,8 @@ static inline void printk_safe_flush_on_panic(void)
 extern int kptr_restrict;
 
 /* Barriers for printk format enumeration */
-extern char *__start_printk_fmts[];
-extern char *__end_printk_fmts[];
+extern const char *__start___printk_fmt[];
+extern const char *__stop___printk_fmt[];
 
 /**
  * pr_fmt - used by the pr_*() macros to generate the printk format string
@@ -303,7 +303,7 @@ extern char *__end_printk_fmts[];
 #define _printk_store_fmt(var, fmt, ...)                                       \
 	({                                                                     \
 		static const char var[]                                        \
-			__attribute__((section("printk_fmts"))) = fmt;         \
+			__attribute__((section("__printk_fmt"))) = fmt;         \
 		printk(var, ##__VA_ARGS__);                                    \
 	})
 
