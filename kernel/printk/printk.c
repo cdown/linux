@@ -680,17 +680,24 @@ static void *proc_printk_formats_next(struct seq_file *s, void *v, loff_t *pos)
 	if (curfmt < __start_printk_fmts || curfmt > __stop_printk_fmts)
 		return NULL;
 
+	trace_printk("passed range check\n");
+
 	while (curfmt < __stop_printk_fmts && *curfmt) {
 		++*spos;
 		++curfmt;
 	}
+
+	trace_printk("after passing string: curfmt %p, spos %lld\n", curfmt, *spos);
 	while (curfmt < __stop_printk_fmts && !*curfmt) {
 		++*spos;
 		++curfmt;
 	}
+	trace_printk("after passing nulls: curfmt %p, final spos %lld\n", curfmt, *spos);
 
 	if (curfmt == __stop_printk_fmts)
 		return NULL;
+
+	trace_printk("passed stop check\n");
 
 	*pos = *spos;
 
