@@ -661,7 +661,7 @@ static ssize_t msg_print_ext_body(char *buf, size_t size,
 /* pos if still valid, NULL if we're at the end. */
 static void *proc_printk_formats_start(struct seq_file *s, loff_t *pos)
 {
-	char **curfmt = __start___printk_fmt + *pos;
+	const char **curfmt = __start___printk_fmt + *pos;
 	if (curfmt < __start___printk_fmt || curfmt > __stop___printk_fmt)
 		return NULL;
 	else
@@ -670,7 +670,7 @@ static void *proc_printk_formats_start(struct seq_file *s, loff_t *pos)
 
 static void *proc_printk_formats_next(struct seq_file *s, void *v, loff_t *pos)
 {
-	char **curfmt = __start___printk_fmt + *pos;
+	const char **curfmt = __start___printk_fmt + *pos;
 
 	trace_printk("next starting at at pos %lld\n", *pos);
 	trace_printk("curfmt %p, __start___printk_fmt %p, __stop___printk_fmt %p\n", curfmt, __start___printk_fmt, __stop___printk_fmt);
@@ -716,7 +716,7 @@ static void proc_printk_formats_stop(struct seq_file *s, void *v)
 static int proc_printk_formats_show(struct seq_file *s, void *v)
 {
 	loff_t *pos = v;
-	char **curfmt = __start___printk_fmt + *pos;
+	const char **curfmt = __start___printk_fmt + *pos;
 	trace_printk("SEQ_PUTS: curfmt %p, __start___printk_fmt %p, __stop___printk_fmt %p, pos %lld\n", curfmt, __start___printk_fmt, __stop___printk_fmt, *pos);
 	seq_puts(s, *curfmt);
         return 0;
