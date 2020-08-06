@@ -675,29 +675,29 @@ static void *proc_printk_formats_next(struct seq_file *s, void *v, loff_t *pos)
 	char **curfmt = __start_printk_fmts + *spos;
 
 	trace_printk("next starting at at spos %lld, pos %lld\n", *spos, *pos);
-	trace_printk("curfmt %p, __start_printk_fmts %p, __stop_printk_fmts %p\n", curfmt, __start_printk_fmts, __stop_printk_fmts);
+	trace_printk("curfmt %p, __start_printk_fmts %p, __end_printk_fmts %p\n", curfmt, __start_printk_fmts, __end_printk_fmts);
 
 	trace_printk("curfmt < __start_printk_fmts: %d\n", curfmt < __start_printk_fmts);
-	trace_printk("curfmt > __stop_printk_fmts: %d\n", curfmt > __stop_printk_fmts);
+	trace_printk("curfmt > __end_printk_fmts: %d\n", curfmt > __end_printk_fmts);
 
-	if (curfmt < __start_printk_fmts || curfmt > __stop_printk_fmts)
+	if (curfmt < __start_printk_fmts || curfmt > __end_printk_fmts)
 		return NULL;
 
 	trace_printk("passed range check\n");
 
-	while (curfmt < __stop_printk_fmts && *curfmt) {
+	while (curfmt < __end_printk_fmts && *curfmt) {
 		++*spos;
 		++curfmt;
 	}
 
 	trace_printk("after passing string: curfmt %p, spos %lld\n", curfmt, *spos);
-	while (curfmt < __stop_printk_fmts && !*curfmt) {
+	while (curfmt < __end_printk_fmts && !*curfmt) {
 		++*spos;
 		++curfmt;
 	}
 	trace_printk("after passing nulls: curfmt %p, final spos %lld\n", curfmt, *spos);
 
-	if (curfmt == __stop_printk_fmts)
+	if (curfmt == __end_printk_fmts)
 		return NULL;
 
 	trace_printk("passed stop check\n");
@@ -716,7 +716,7 @@ static int proc_printk_formats_show(struct seq_file *s, void *v)
 {
 	loff_t *spos = v;
 	char **curfmt = __start_printk_fmts + *spos;
-	trace_printk("SEQ_PUTS: curfmt %p, __start_printk_fmts %p, __stop_printk_fmts %p, spos %lld\n", curfmt, __start_printk_fmts, __stop_printk_fmts, *spos);
+	trace_printk("SEQ_PUTS: curfmt %p, __start_printk_fmts %p, __end_printk_fmts %p, spos %lld\n", curfmt, __start_printk_fmts, __end_printk_fmts, *spos);
 	seq_puts(s, *curfmt);
         return 0;
 }

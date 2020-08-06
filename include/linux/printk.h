@@ -281,7 +281,7 @@ extern int kptr_restrict;
 
 /* Barriers for printk format enumeration */
 extern char *__start_printk_fmts[];
-extern char *__stop_printk_fmts[];
+extern char *__end_printk_fmts[];
 
 /**
  * pr_fmt - used by the pr_*() macros to generate the printk format string
