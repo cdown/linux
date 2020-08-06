@@ -280,8 +280,8 @@ static inline void printk_safe_flush_on_panic(void)
 extern int kptr_restrict;
 
 /* Barriers for printk format enumeration */
-extern const char *__start___printk_fmts[];
-extern const char *__stop___printk_fmts[];
+extern char *__start_printk_fmts[];
+extern char *__stop_printk_fmts[];
 
 /**
  * pr_fmt - used by the pr_*() macros to generate the printk format string
