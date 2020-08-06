@@ -683,15 +683,15 @@ static void *proc_printk_formats_next(struct seq_file *s, void *v, loff_t *pos)
 
 	trace_printk("passed range check\n");
 
-	while (curfmt < __end_printk_fmts && *curfmt) {
+	while (curfmt < __end_printk_fmts && **curfmt) {
 		++*pos;
-		++curfmt;
+		++*curfmt;
 	}
 
 	trace_printk("after passing string: curfmt %p, pos %lld\n", curfmt, *pos);
-	while (curfmt < __end_printk_fmts && !*curfmt) {
+	while (curfmt < __end_printk_fmts && !**curfmt) {
 		++*pos;
-		++curfmt;
+		++*curfmt;
 	}
 	trace_printk("after passing nulls: curfmt %p, final pos %lld\n", curfmt, *pos);
 
