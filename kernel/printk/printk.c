@@ -685,6 +685,8 @@ static void *proc_printk_formats_next(struct seq_file *s, void *v, loff_t *pos)
 
 	trace_printk("at **curfmt: %c\n", **curfmt);
 	trace_printk("string: %s\n", *curfmt);
+	trace_printk("curfmt < __end_printk_fmts: %d\n", curfmt < __end_printk_fmts);
+	trace_printk("**curfmt != NULL: %d\n", **curfmt != '\0');
 
 	while (curfmt < __end_printk_fmts && **curfmt != '\0') {
 		++*pos;
