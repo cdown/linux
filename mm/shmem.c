@@ -277,34 +277,7 @@ static int shmem_reserve_inode(struct super_block *sb, ino_t *inop)
 	struct shmem_sb_info *sbinfo = SHMEM_SB(sb);
 	ino_t ino;
 
-	if (!(sb->s_flags & SB_KERNMOUNT)) {
-		trace_printk("dev %d: got a request for non-kernmount\n", MINOR(sb->s_dev));
-		spin_lock(&sbinfo->stat_lock);
-		if (!sbinfo->free_inodes) {
-			spin_unlock(&sbinfo->stat_lock);
-			return -ENOSPC;
-		}
-		sbinfo->free_inodes--;
-		if (inop) {
-			ino = sbinfo->next_ino++;
-			if (unlikely(is_zero_ino(ino)))
-				ino = sbinfo->next_ino++;
-			if (unlikely(!sbinfo->full_inums &&
-				     ino > UINT_MAX)) {
-				/*
-				 * Emulate get_next_ino uint wraparound for
-				 * compatibility
-				 */
-				if (IS_ENABLED(CONFIG_64BIT))
-					pr_warn("%s: inode number overflow on device %d, consider using inode64 mount option\n",
-						__func__, MINOR(sb->s_dev));
-				sbinfo->next_ino = 1;
-				ino = sbinfo->next_ino++;
-			}
-			*inop = ino;
-		}
-		spin_unlock(&sbinfo->stat_lock);
-	} else if (inop) {
+	if (inop) {
 		trace_printk("dev %d: got a request for kernmount with inop\n", MINOR(sb->s_dev));
 		/*
 		 * __shmem_file_setup, one of our callers, is lock-free: it
