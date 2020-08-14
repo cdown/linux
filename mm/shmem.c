@@ -278,6 +278,7 @@ static int shmem_reserve_inode(struct super_block *sb, ino_t *inop)
 	ino_t ino;
 
 	if (!(sb->s_flags & SB_KERNMOUNT)) {
+		trace_printk("dev %d: got a request for non-kernmount\n", MINOR(sb->s_dev));
 		spin_lock(&sbinfo->stat_lock);
 		if (!sbinfo->free_inodes) {
 			spin_unlock(&sbinfo->stat_lock);
@@ -304,6 +305,7 @@ static int shmem_reserve_inode(struct super_block *sb, ino_t *inop)
 		}
 		spin_unlock(&sbinfo->stat_lock);
 	} else if (inop) {
+		trace_printk("dev %d: got a request for kernmount with inop\n", MINOR(sb->s_dev));
 		/*
 		 * __shmem_file_setup, one of our callers, is lock-free: it
 		 * doesn't hold stat_lock in shmem_reserve_inode since
@@ -330,6 +332,8 @@ static int shmem_reserve_inode(struct super_block *sb, ino_t *inop)
 		*inop = ino;
 		*next_ino = ++ino;
 		put_cpu();
+	} else {
+		trace_printk("dev %d: got a request for kernelmount with NULL inop\n", MINOR(sb->s_dev));
 	}
 
 	return 0;
