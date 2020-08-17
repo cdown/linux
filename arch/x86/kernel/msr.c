@@ -80,13 +80,23 @@ static ssize_t msr_read(struct file *file, char __user *buf,
 
 static int filter_write(u32 reg)
 {
+	/*
+	 * Banging MSRs usually happens all at once, and can easily overwhelm
+	 * the console. Only allow 1 MSR message every 30 seconds.
+	 *
+	 * We could be smarter here and do it per-MSR, or whatever, but it would
+	 * certainly be more complex, and this is enough at least to stop
+	 * completely saturating kmsg.
+	 */
+	static DEFINE_RATELIMIT_STATE(fw_rs, 30 * HZ, 1);
+
 	switch (allow_writes) {
 	case MSR_WRITES_ON:  return 0;
 	case MSR_WRITES_OFF: return -EPERM;
 	default: break;
 	}
 
-	if (reg == MSR_IA32_ENERGY_PERF_BIAS)
+	if (!__ratelimit(&fw_rs) || reg == MSR_IA32_ENERGY_PERF_BIAS)
 		return 0;
 
 	pr_err_ratelimited("Write to unrecognized MSR 0x%x by %s\n"
