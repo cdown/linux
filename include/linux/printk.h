@@ -307,7 +307,7 @@ extern char *__stop_printk_fmts;
 
 #define _printk_store_fmt(var, fmt, ...)                                       \
 	({                                                                     \
-		static const char var[]                                        \
+		static char var[]                                        \
 			__section(".printk_fmts") = fmt;         \
 		printk(var, ##__VA_ARGS__);                                    \
 	})
