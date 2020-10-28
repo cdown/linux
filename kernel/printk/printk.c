@@ -685,6 +685,8 @@ static void *proc_printk_formats_next(struct seq_file *s, void *v, loff_t *pos)
 	trace_printk("next starting at at spos %lld, pos %lld\n", *spos, *pos);
 	trace_printk("curfmt %p, __start_printk_fmts %p, __stop_printk_fmts %p\n", curfmt, __start_printk_fmts, __stop_printk_fmts);
 
+	*pos = *spos;
+
 	if (curfmt < __start_printk_fmts || curfmt > __stop_printk_fmts)
 		return NULL;
 
@@ -699,8 +701,6 @@ static void *proc_printk_formats_next(struct seq_file *s, void *v, loff_t *pos)
 
 	if (curfmt == __stop_printk_fmts)
 		return NULL;
-
-	*pos = *spos;
 
 	return spos;
 }
