@@ -468,10 +468,10 @@
 	TRACEDATA							\
 									\
 	/* printk format strings */					\
-	__printk_fmts  : AT(ADDR(__printk_fmts) - LOAD_OFFSET) {	\
-		__start___printk_fmts = .;				\
-		KEEP(*(SORT(___printk_fmts+*)))				\
-		__stop___printk_fmts = .;				\
+	.printk_fmts  : AT(ADDR(.printk_fmts) - LOAD_OFFSET) {	\
+		__start_printk_fmts = .;				\
+		KEEP(*(.printk_fmts)))				\
+		__stop_printk_fmts = .;				\
 	}								\
 									\
 	/* Kernel symbol table: Normal symbols */			\

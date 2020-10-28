@@ -9,7 +9,6 @@ SECTIONS {
 		*(.discard.*)
 	}
 
-	__printk_fmts		0 : { *(SORT(___printk_fmts+*)) }
 	__ksymtab		0 : { *(SORT(___ksymtab+*)) }
 	__ksymtab_gpl		0 : { *(SORT(___ksymtab_gpl+*)) }
 	__ksymtab_unused	0 : { *(SORT(___ksymtab_unused+*)) }
