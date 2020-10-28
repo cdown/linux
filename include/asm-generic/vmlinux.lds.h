@@ -423,9 +423,6 @@
 		__start___tracepoints_ptrs = .;				\
 		KEEP(*(__tracepoints_ptrs)) /* Tracepoints: pointer array */ \
 		__stop___tracepoints_ptrs = .;				\
-		__start_printk_fmts = .;					\
-		KEEP(*(.printk_fmts))					\
-		__stop_printk_fmts = .;					\
 		*(__tracepoints_strings)/* Tracepoints: strings */	\
 	}								\
 									\
@@ -469,6 +466,13 @@
 	}								\
 									\
 	TRACEDATA							\
+									\
+	/* printk format strings */					\
+	.printk_fmts        : AT(ADDR(.printk_fmts) - LOAD_OFFSET) {	\
+		__start_printk_fmts = .;					\
+		KEEP(*(.printk_fmts))					\
+		__stop_printk_fmts = .;					\
+	}								\
 									\
 	/* Kernel symbol table: Normal symbols */			\
 	__ksymtab         : AT(ADDR(__ksymtab) - LOAD_OFFSET) {		\
