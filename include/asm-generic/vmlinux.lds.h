@@ -471,7 +471,7 @@
 	__printk_fmts  : AT(ADDR(__printk_fmts) - LOAD_OFFSET) {	\
 		__start___printk_fmts = .;				\
 		KEEP(*(SORT(___printk_fmts+*)))				\
-		__end___printk_fmts = .;				\
+		__stop___printk_fmts = .;				\
 	}								\
 									\
 	/* Kernel symbol table: Normal symbols */			\
