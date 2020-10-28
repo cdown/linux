@@ -714,6 +714,8 @@ static int proc_printk_formats_show(struct seq_file *s, void *v)
 {
 	loff_t *spos = v;
 	char **curfmt = __start_printk_fmts + *spos;
+	trace_printk("show starting at at spos %lld\n", *spos);
+	trace_printk("curfmt %p, __start_printk_fmts %p, __stop_printk_fmts %p\n", curfmt, __start_printk_fmts, __stop_printk_fmts);
 	seq_puts(s, *curfmt);
         return 0;
 }
