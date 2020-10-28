@@ -680,7 +680,7 @@ static void *proc_printk_formats_start(struct seq_file *s, loff_t *pos)
 static void *proc_printk_formats_next(struct seq_file *s, void *v, loff_t *pos)
 {
 	loff_t *spos = v;
-	char **curfmt = __start_printk_fmts + *spos;
+	char *curfmt = __start_printk_fmts + *spos;
 
 	trace_printk("next starting at at spos %lld, pos %lld\n", *spos, *pos);
 	trace_printk("curfmt %p, __start_printk_fmts %p, __stop_printk_fmts %p\n", curfmt, __start_printk_fmts, __stop_printk_fmts);
@@ -713,10 +713,10 @@ static void proc_printk_formats_stop(struct seq_file *s, void *v)
 static int proc_printk_formats_show(struct seq_file *s, void *v)
 {
 	loff_t *spos = v;
-	char **curfmt = __start_printk_fmts + *spos;
+	char *curfmt = __start_printk_fmts + *spos;
 	trace_printk("show starting at at spos %lld\n", *spos);
 	trace_printk("curfmt %p, __start_printk_fmts %p, __stop_printk_fmts %p\n", curfmt, __start_printk_fmts, __stop_printk_fmts);
-	seq_puts(s, *curfmt);
+	seq_puts(s, curfmt);
         return 0;
 }
 
