@@ -324,6 +324,9 @@ void security_inode_free(struct inode *inode);
 int security_inode_init_security(struct inode *inode, struct inode *dir,
 				 const struct qstr *qstr,
 				 initxattrs initxattrs, void *fs_data);
+int security_inode_init_security_anon(struct inode *inode,
+				      const struct qstr *name,
+				      const struct inode *context_inode);
 int security_old_inode_init_security(struct inode *inode, struct inode *dir,
 				     const struct qstr *qstr, const char **name,
 				     void **value, size_t *len);
@@ -734,6 +737,13 @@ static inline int security_inode_init_security(struct inode *inode,
 						const struct qstr *qstr,
 						const initxattrs xattrs,
 						void *fs_data)
+{
+	return 0;
+}
+
+static inline int security_inode_init_security_anon(struct inode *inode,
+						    const struct qstr *name,
+						    const struct inode *context_inode)
 {
 	return 0;
 }
@@ -1324,6 +1334,14 @@ static inline int security_post_notification(const struct cred *w_cred,
 int security_watch_key(struct key *key);
 #else
 static inline int security_watch_key(struct key *key)
+{
+	return 0;
+}
+#endif
+#if defined(CONFIG_SECURITY) && defined(CONFIG_MOUNT_NOTIFICATIONS)
+int security_watch_mount(struct watch *watch, struct path *path);
+#else
+static inline int security_watch_mount(struct watch *watch, struct path *path)
 {
 	return 0;
 }

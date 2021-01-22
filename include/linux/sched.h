@@ -1925,6 +1925,17 @@ static __always_inline bool need_resched(void)
 	return unlikely(tif_need_resched());
 }
 
+#ifdef CONFIG_SCHED_DEBUG
+extern void sched_resched_local_allow(void);
+extern void sched_resched_local_forbid(void);
+extern void sched_resched_local_assert_allowed(void);
+#else
+static inline void sched_resched_local_allow(void) { }
+static inline void sched_resched_local_forbid(void) { }
+static inline void sched_resched_local_assert_allowed(void) { }
+#endif
+
+
 /*
  * Wrappers for p->thread_info->cpu access. No-op on UP.
  */
@@ -1975,6 +1986,11 @@ extern long sched_getaffinity(pid_t pid, struct cpumask *mask);
 #ifndef TASK_SIZE_OF
 #define TASK_SIZE_OF(tsk)	TASK_SIZE
 #endif
+
+#ifdef CONFIG_SMP
+/* Returns effective CPU energy utilization, as seen by the scheduler */
+unsigned long sched_cpu_util(int cpu, unsigned long max);
+#endif /* CONFIG_SMP */
 
 #ifdef CONFIG_RSEQ
 

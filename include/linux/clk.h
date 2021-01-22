@@ -92,7 +92,7 @@ struct clk_bulk_data {
 #ifdef CONFIG_COMMON_CLK
 
 /**
- * clk_notifier_register: register a clock rate-change notifier callback
+ * clk_notifier_register - register a clock rate-change notifier callback
  * @clk: clock whose rate we are interested in
  * @nb: notifier block with callback function pointer
  *
@@ -103,7 +103,7 @@ struct clk_bulk_data {
 int clk_notifier_register(struct clk *clk, struct notifier_block *nb);
 
 /**
- * clk_notifier_unregister: unregister a clock rate-change notifier callback
+ * clk_notifier_unregister - unregister a clock rate-change notifier callback
  * @clk: clock whose rate we are no longer interested in
  * @nb: notifier block which will be unregistered
  */
@@ -553,6 +553,23 @@ void clk_disable(struct clk *clk);
  * disabled.
  */
 void clk_bulk_disable(int num_clks, const struct clk_bulk_data *clks);
+
+/**
+ * clk_is_enabled_when_prepared - indicate if preparing a clock also enables it.
+ * @clk: clock source
+ *
+ * Returns true if clk_prepare() implicitly enables the clock, effectively
+ * making clk_enable()/clk_disable() no-ops, false otherwise.
+ *
+ * This is of interest mainly to the power management code where actually
+ * disabling the clock also requires unpreparing it to have any material
+ * effect.
+ *
+ * Regardless of the value returned here, the caller must always invoke
+ * clk_enable() or clk_prepare_enable()  and counterparts for usage counts
+ * to be right.
+ */
+bool clk_is_enabled_when_prepared(struct clk *clk);
 
 /**
  * clk_get_rate - obtain the current clock rate (in Hz) for a clock source.

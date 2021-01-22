@@ -431,6 +431,7 @@ static int vmw_bo_cpu_blit_line(struct vmw_bo_blit_line_data *d,
  * @src_stride: Source stride in bytes.
  * @w: Width of blit.
  * @h: Height of blit.
+ * @diff: The struct vmw_diff_cpy used to track the modified bounding box.
  * return: Zero on success. Negative error value on failure. Will print out
  * kernel warnings on caller bugs.
  *
@@ -482,8 +483,8 @@ int vmw_bo_cpu_blit(struct ttm_buffer_object *dst,
 	d.src_addr = NULL;
 	d.dst_pages = dst->ttm->pages;
 	d.src_pages = src->ttm->pages;
-	d.dst_num_pages = dst->num_pages;
-	d.src_num_pages = src->num_pages;
+	d.dst_num_pages = dst->mem.num_pages;
+	d.src_num_pages = src->mem.num_pages;
 	d.dst_prot = ttm_io_prot(dst, &dst->mem, PAGE_KERNEL);
 	d.src_prot = ttm_io_prot(src, &src->mem, PAGE_KERNEL);
 	d.diff = diff;

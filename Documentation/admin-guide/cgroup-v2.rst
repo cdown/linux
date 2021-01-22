@@ -1029,7 +1029,7 @@ All time durations are in microseconds.
 	one number is written, $MAX is updated.
 
   cpu.pressure
-	A read-only nested-key file which exists on non-root cgroups.
+	A read-write nested-keyed file.
 
 	Shows pressure stall information for CPU. See
 	:ref:`Documentation/accounting/psi.rst <psi>` for details.
@@ -1479,7 +1479,7 @@ PAGE_SIZE multiple when read back.
 	reduces the impact on the workload and memory management.
 
   memory.pressure
-	A read-only nested-key file which exists on non-root cgroups.
+	A read-only nested-keyed file.
 
 	Shows pressure stall information for memory. See
 	:ref:`Documentation/accounting/psi.rst <psi>` for details.
@@ -1562,7 +1562,7 @@ IO Interface Files
 	  8:0 rbytes=90430464 wbytes=299008000 rios=8950 wios=1252 dbytes=50331648 dios=3021
 
   io.cost.qos
-	A read-write nested-keyed file with exists only on the root
+	A read-write nested-keyed file which exists only on the root
 	cgroup.
 
 	This file configures the Quality of Service of the IO cost
@@ -1617,7 +1617,7 @@ IO Interface Files
 	automatic mode can be restored by setting "ctrl" to "auto".
 
   io.cost.model
-	A read-write nested-keyed file with exists only on the root
+	A read-write nested-keyed file which exists only on the root
 	cgroup.
 
 	This file configures the cost model of the IO cost model based
@@ -1718,7 +1718,7 @@ IO Interface Files
 	  8:16 rbps=2097152 wbps=max riops=max wiops=max
 
   io.pressure
-	A read-only nested-key file which exists on non-root cgroups.
+	A read-only nested-keyed file.
 
 	Shows pressure stall information for IO. See
 	:ref:`Documentation/accounting/psi.rst <psi>` for details.

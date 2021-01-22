@@ -1489,6 +1489,9 @@ static int gpiochip_add_irqchip(struct gpio_chip *gc,
 		type = IRQ_TYPE_NONE;
 	}
 
+	if (gc->to_irq)
+		chip_warn(gc, "to_irq is redefined in %s and you shouldn't rely on it\n", __func__);
+
 	gc->to_irq = gpiochip_to_irq;
 	gc->irq.default_type = type;
 	gc->irq.lock_key = lock_key;
@@ -3460,6 +3463,10 @@ EXPORT_SYMBOL_GPL(gpiod_add_lookup_table);
  */
 void gpiod_remove_lookup_table(struct gpiod_lookup_table *table)
 {
+	/* Nothing to remove */
+	if (!table)
+		return;
+
 	mutex_lock(&gpio_lookup_lock);
 
 	list_del(&table->list);

@@ -1059,6 +1059,14 @@ out:
 }
 EXPORT_SYMBOL(security_inode_init_security);
 
+int security_inode_init_security_anon(struct inode *inode,
+				      const struct qstr *name,
+				      const struct inode *context_inode)
+{
+	return call_int_hook(inode_init_security_anon, 0, inode, name,
+			     context_inode);
+}
+
 int security_old_inode_init_security(struct inode *inode, struct inode *dir,
 				     const struct qstr *qstr, const char **name,
 				     void **value, size_t *len)
@@ -2081,6 +2089,13 @@ int security_post_notification(const struct cred *w_cred,
 int security_watch_key(struct key *key)
 {
 	return call_int_hook(watch_key, 0, key);
+}
+#endif
+
+#ifdef CONFIG_MOUNT_NOTIFICATIONS
+int security_watch_mount(struct watch *watch, struct path *path)
+{
+	return call_int_hook(watch_mount, 0, watch, path);
 }
 #endif
 
