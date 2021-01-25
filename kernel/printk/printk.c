@@ -618,56 +618,244 @@ out:
 	return len;
 }
 
-static void *proc_printk_formats_start(struct seq_file *s, loff_t *pos)
+/* /proc/printk_formats */
+
+#ifdef CONFIG_MODULES
+
+static LIST_HEAD(module_printk_fmt_list);
+
+/* for module_printk_fmt_list */
+static DEFINE_MUTEX(module_printk_fmt_mutex);
+
+struct module_printk_fmt {
+	struct module *module;
+	struct list_head list;
+	const char *fmt;
+};
+
+static
+void store_module_printk_fmts(struct module *mod,
+			      const char *start, unsigned int max)
 {
-	loff_t *spos;
-	char *curfmt = __start_printk_fmts + *pos;
+	loff_t pos = 0;
 
-	if (curfmt < __start_printk_fmts || curfmt >= __stop_printk_fmts)
-		return NULL;
+	mutex_lock(&module_printk_fmt_mutex);
 
-	spos = kmalloc(sizeof(loff_t), GFP_KERNEL);
-	if (!spos) {
-		pr_err("printk_formats: failed to allocate memory\n");
-		return NULL;
+	pr_err("Got %d bytes of printk fmts\n", max);
+
+	while (pos < max) {
+		const char *mfmt = start + pos;
+		struct module_printk_fmt *mod_fmt_obj;
+		char *hfmt;
+
+		mod_fmt_obj = kmalloc(sizeof(struct module_printk_fmt),
+				      GFP_KERNEL);
+
+		if (!mod_fmt_obj) {
+			pr_err("Can't allocate mod_fmt_obj\n");
+			return;
+		}
+
+		mod_fmt_obj->module = mod;
+
+		hfmt = kmalloc(strlen(mfmt) + 1, GFP_KERNEL);
+		if (!hfmt) {
+			pr_err("Can't allocate mod_fmt_obj fmt\n");
+			kfree(mod_fmt_obj);
+			return;
+		}
+
+		strcpy(hfmt, mfmt);
+		mod_fmt_obj->fmt = hfmt;
+
+		pr_err("&mod_fmt_obj: %px, mod_fmt_obj: %px, &hfmt: %px, hfmt: %px\n", &mod_fmt_obj, mod_fmt_obj, &hfmt, hfmt);
+
+		pr_err("Added to list: %s\n", mod_fmt_obj->fmt);
+
+		list_add_tail(&mod_fmt_obj->list, &module_printk_fmt_list);
+
+		/* There may be multiple nulls */
+		while (pos < max && start[pos] != '\0') {
+			pr_err("bump pos != nul pre: %d", (unsigned)pos);
+			++pos;
+		}
+		while (pos < max && start[pos] == '\0') {
+			pr_err("bump pos == nul pre: %d", (unsigned)pos);
+			++pos;
+		}
 	}
 
-	trace_printk("start read at %lld\n", *pos);
-	*spos = *pos;
-	return spos;
+	mutex_unlock(&module_printk_fmt_mutex);
+}
+
+static void destroy_module_printk_fmts(struct module *mod) {
+	struct module_printk_fmt *tmp, *fmt;
+
+	mutex_lock(&module_printk_fmt_mutex);
+
+	list_for_each_entry_safe(fmt, tmp, &module_printk_fmt_list, list) {
+		if (fmt->module == mod) {
+			pr_err("destroy %s\n", fmt->fmt);
+			list_del(&fmt->list);
+			kfree(fmt);
+		}
+	}
+
+	mutex_unlock(&module_printk_fmt_mutex);
+}
+
+static int module_printk_fmts_notify(struct notifier_block *self,
+				     unsigned long val, void *data)
+{
+	struct module *mod = data;
+	if (mod->printk_fmts_text_size) {
+		switch (val) {
+		case MODULE_STATE_COMING:
+			store_module_printk_fmts(mod, mod->printk_fmts_start, mod->printk_fmts_text_size);
+			break;
+
+		case MODULE_STATE_GOING:
+			destroy_module_printk_fmts(mod);
+			break;
+		}
+
+	}
+	return NOTIFY_OK;
+}
+
+static struct notifier_block module_printk_fmts_nb = {
+	.notifier_call = module_printk_fmts_notify,
+};
+
+static int __init module_printk_fmts_init(void)
+{
+	register_module_notifier(&module_printk_fmts_nb);
+	return 0;
+}
+
+fs_initcall(module_printk_fmts_init);
+
+#endif /* CONFIG_MODULES */
+
+
+static loff_t pos_to_module_idx(loff_t *pos) {
+	return *pos - (__stop_printk_fmts - __start_printk_fmts);
+}
+
+/*
+ * Finds a printk format and updates pos to the next one.
+ *
+ * Returns NULL if out of formats.
+ */
+static struct module_printk_fmt *find_next_format(void *v, loff_t *pos)
+{
+	loff_t module_idx = pos_to_module_idx(pos);
+	bool is_builtin_format = module_idx < 0;
+	struct module_printk_fmt *mod = NULL, *ret = NULL;
+
+	/*
+	 * We need to make sure to use the exact same pointer as in the list
+	 * for container_of later.
+	 */
+	if (!v) {
+		ret = kmalloc(sizeof(*ret), GFP_KERNEL);
+		if (!ret) {
+			pr_err("Failed to allocate printk format\n");
+			return NULL;
+		}
+		memset(ret, 0, sizeof(*ret));
+	} else
+		ret = v;
+
+	if (is_builtin_format) {
+		const char *builtin_fmt = __start_printk_fmts + *pos;
+
+		*pos += strlen(builtin_fmt);
+		for (;;) {
+			const char *tmp = __start_printk_fmts + *pos;
+			if (tmp >= __stop_printk_fmts || *tmp)
+				break;
+			(*pos)++;
+		}
+
+		ret->fmt = builtin_fmt;
+		return ret;
+	}
+
+	/* It must be a module format, or invalid */
+
+	(*pos)++;
+	mutex_lock(&module_printk_fmt_mutex);
+
+	pr_err("Inside lock\n");
+
+	if (!v || module_idx == 0) {
+		struct module_printk_fmt *fmt;
+		loff_t cur = 0;
+
+		/*
+		 * A new run from _start with no state, or the first iteration
+		 * of the mod list, so walk it.
+		 */
+
+		pr_err("Start list\n");
+		list_for_each_entry(fmt, &module_printk_fmt_list,
+					 list) {
+			if (cur == module_idx) {
+				pr_err("Found\n");
+
+				ret->fmt = fmt->fmt;
+				ret->module = fmt->module;
+				ret->list = fmt->list;
+
+				goto out_module_unlock;
+			}
+			cur++;
+		}
+		pr_err("End list\n");
+
+		/*
+		 * List exhausted, check we were only probing and not
+		 * unexpectedly out of bounds
+		 */
+		WARN_ON(module_idx > cur + 1);
+		kfree(ret);
+		ret = NULL;
+		goto out_module_unlock;
+	}
+
+	pr_err("No walk 1\n");
+	if (ret->list.next == &module_printk_fmt_list) {
+		kfree(ret);
+		ret = NULL;
+		goto out_module_unlock;
+	}
+
+	pr_err("No walk 2\n");
+
+	mod = container_of(ret->list.next, typeof(*ret),
+			       list);
+
+	pr_err("No walk 3\n");
+
+	ret->fmt = mod->fmt;
+	ret->module = mod->module;
+	ret->list = mod->list;
+
+out_module_unlock:
+	mutex_unlock(&module_printk_fmt_mutex);
+	return ret;
+}
+
+
+static void *proc_printk_formats_start(struct seq_file *s, loff_t *pos)
+{
+	return find_next_format(NULL, pos);
 }
 
 static void *proc_printk_formats_next(struct seq_file *s, void *v, loff_t *pos)
 {
-	loff_t *spos = v;
-	char *curfmt = __start_printk_fmts + *spos;
-
-	trace_printk("next starting at at spos %lld, pos %lld\n", *spos, *pos);
-	trace_printk("curfmt %p, __start_printk_fmts %p, __stop_printk_fmts %p\n", curfmt, __start_printk_fmts, __stop_printk_fmts);
-
-	if (curfmt < __start_printk_fmts || curfmt >= __stop_printk_fmts)
-		goto finish_seq;
-
-	while (curfmt < __stop_printk_fmts && *curfmt) {
-		++*spos;
-		++curfmt;
-	}
-	while (curfmt < __stop_printk_fmts && !*curfmt) {
-		++*spos;
-		++curfmt;
-	}
-
-	if (curfmt == __stop_printk_fmts)
-		goto finish_seq;
-
-	trace_printk("end of next\n");
-
-	*pos = *spos;
-	return spos;
-
-finish_seq:
-	*pos = *spos;
-	return NULL;
+	return find_next_format(v, pos);
 }
 
 static void proc_printk_formats_stop(struct seq_file *s, void *v)
@@ -677,12 +865,9 @@ static void proc_printk_formats_stop(struct seq_file *s, void *v)
 
 static int proc_printk_formats_show(struct seq_file *s, void *v)
 {
-	loff_t *spos = v;
-	char *curfmt = __start_printk_fmts + *spos;
-	trace_printk("show starting at at spos %lld\n", *spos);
-	trace_printk("curfmt %p, __start_printk_fmts %p, __stop_printk_fmts %p\n", curfmt, __start_printk_fmts, __stop_printk_fmts);
-	seq_puts(s, curfmt);
-        return 0;
+	struct module_printk_fmt *mod = v;
+	seq_puts(s, mod->fmt);
+	return 0;
 }
 
 static const struct seq_operations proc_printk_formats_ops = {
