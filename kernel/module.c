@@ -3430,6 +3430,8 @@ static int find_module_sections(struct module *mod, struct load_info *info)
 						sizeof(unsigned long),
 						&mod->num_kprobe_blacklist);
 #endif
+	mod->printk_fmts_start = section_objs(info, ".printk_fmts",
+					 1, &mod->printk_fmts_text_size);
 #ifdef CONFIG_HAVE_STATIC_CALL_INLINE
 	mod->static_call_sites = section_objs(info, ".static_call_sites",
 					      sizeof(*mod->static_call_sites),

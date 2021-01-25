@@ -618,6 +618,124 @@ out:
 	return len;
 }
 
+/* /proc/printk_formats */
+
+#ifdef CONFIG_MODULES
+
+static LIST_HEAD(module_printk_fmt_list);
+
+/* for module_printk_fmt_list */
+static DEFINE_MUTEX(module_printk_fmt_mutex);
+
+struct module_printk_fmt {
+	struct module *module;
+	struct list_head list;
+	const char *fmt;
+};
+
+static
+void store_module_printk_fmts(struct module *mod,
+			      const char *start, unsigned int max)
+{
+	loff_t pos = 0;
+
+	mutex_lock(&module_printk_fmt_mutex);
+
+	pr_err("Got %d bytes of printk fmts\n", max);
+
+	while (pos < max) {
+		const char *mfmt = start + pos;
+		struct module_printk_fmt *mod_fmt_obj;
+		char *hfmt;
+
+		mod_fmt_obj = kmalloc(sizeof(struct module_printk_fmt),
+				      GFP_KERNEL);
+
+		if (!mod_fmt_obj) {
+			pr_err("Can't allocate mod_fmt_obj\n");
+			return;
+		}
+
+		mod_fmt_obj->module = mod;
+
+		hfmt = kmalloc(strlen(mfmt) + 1, GFP_KERNEL);
+		if (!hfmt) {
+			pr_err("Can't allocate mod_fmt_obj fmt\n");
+			kfree(mod_fmt_obj);
+			return;
+		}
+
+		strcpy(hfmt, mfmt);
+		mod_fmt_obj->fmt = hfmt;
+
+		pr_err("Added to list: %s\n", mod_fmt_obj->fmt);
+
+		list_add_tail(&mod_fmt_obj->list, &module_printk_fmt_list);
+
+		/* There may be multiple nulls */
+		while (pos < max && start[pos] != '\0') {
+			pr_err("bump pos != nul pre: %d", (unsigned)pos);
+			++pos;
+		}
+		while (pos < max && start[pos] == '\0') {
+			pr_err("bump pos == nul pre: %d", (unsigned)pos);
+			++pos;
+		}
+	}
+
+	mutex_unlock(&module_printk_fmt_mutex);
+}
+
+static void destroy_module_printk_fmts(struct module *mod) {
+	struct module_printk_fmt *tmp, *fmt;
+
+	mutex_lock(&module_printk_fmt_mutex);
+
+	list_for_each_entry_safe(fmt, tmp, &module_printk_fmt_list, list) {
+		if (fmt->module == mod) {
+			pr_err("destroy %s\n", fmt->fmt);
+			list_del(&fmt->list);
+			kfree(fmt);
+		}
+	}
+
+	mutex_unlock(&module_printk_fmt_mutex);
+}
+
+static int module_printk_fmts_notify(struct notifier_block *self,
+				     unsigned long val, void *data)
+{
+	struct module *mod = data;
+	if (mod->printk_fmts_text_size) {
+		switch (val) {
+		case MODULE_STATE_COMING:
+			store_module_printk_fmts(mod, mod->printk_fmts_start, mod->printk_fmts_text_size);
+			break;
+
+		case MODULE_STATE_GOING:
+			destroy_module_printk_fmts(mod);
+			break;
+		}
+
+	}
+	return NOTIFY_OK;
+}
+
+static struct notifier_block module_printk_fmts_nb = {
+	.notifier_call = module_printk_fmts_notify,
+};
+
+static int __init module_printk_fmts_init(void)
+{
+	register_module_notifier(&module_printk_fmts_nb);
+	return 0;
+}
+
+fs_initcall(module_printk_fmts_init);
+
+#endif /* CONFIG_MODULES */
+
+
 static void *proc_printk_formats_start(struct seq_file *s, loff_t *pos)
 {
 	loff_t *spos;
