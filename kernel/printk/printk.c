@@ -781,7 +781,13 @@ static struct module_printk_fmt *find_next_format(void *v, loff_t *pos)
 		return ret;
 	}
 
-	/* Ok, so it must be either a module, or out of bounds. */
+	/*
+	 * Ok, so it must be either a module, or out of bounds. We've now gone
+	 * from byte-granularity to an abstract index in the module printk
+	 * format list.
+	 */
+
+	(*pos)++;
 
 	if (!v || module_idx == 0) {
 		struct module_printk_fmt *fmt;
@@ -793,8 +799,7 @@ static struct module_printk_fmt *find_next_format(void *v, loff_t *pos)
 		 * state, so this should be rare outside of the first run.
 		 */
 
-		list_for_each_entry(fmt, &module_printk_fmt_list,
-					 list) {
+		list_for_each_entry(fmt, &module_printk_fmt_list, list) {
 			if (cur == module_idx) {
 				ret->fmt = fmt->fmt;
 				ret->module = fmt->module;
