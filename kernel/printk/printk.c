@@ -852,8 +852,7 @@ static void proc_printk_formats_stop(struct seq_file *s, void *v)
 
 static int proc_printk_formats_show(struct seq_file *s, void *v)
 {
-	struct module_printk_fmt *mod = v;
-	seq_puts(s, mod->fmt);
+	seq_puts(s, ((struct module_printk_fmt *)v)->fmt);
 	return 0;
 }
 
