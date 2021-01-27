@@ -750,13 +750,13 @@ static loff_t pos_to_module_idx(loff_t *pos) {
  * destroyed internally on list exhaustion, or by proc_printk_formats_stop if
  * the seq_file interface itself decides to start over.
  */
-static struct module_printk_fmt *find_next_format(void *v, loff_t *pos)
+static struct module_printk_fmt *find_next_format(void *vmod, loff_t *pos)
 {
 	loff_t module_idx = pos_to_module_idx(pos);
 	bool is_builtin_format = module_idx < 0;
 	struct module_printk_fmt *mod = NULL, *ret = NULL;
 
-	if (!v) {
+	if (!vmod) {
 		ret = kmalloc(sizeof(*ret), GFP_KERNEL);
 		if (!ret) {
 			pr_err("Failed to allocate printk format\n");
@@ -764,7 +764,7 @@ static struct module_printk_fmt *find_next_format(void *v, loff_t *pos)
 		}
 		memset(ret, 0, sizeof(*ret));
 	} else
-		ret = v;
+		ret = vmod;
 
 	if (is_builtin_format) {
 		const char *builtin_fmt = __start_printk_fmts + *pos;
@@ -789,7 +789,7 @@ static struct module_printk_fmt *find_next_format(void *v, loff_t *pos)
 
 	(*pos)++;
 
-	if (!v || module_idx == 0) {
+	if (!vmod || module_idx == 0) {
 		struct module_printk_fmt *fmt;
 		loff_t cur = 0;
 
@@ -839,20 +839,20 @@ static void *proc_printk_formats_start(struct seq_file *s, loff_t *pos)
 	return find_next_format(NULL, pos);
 }
 
-static void *proc_printk_formats_next(struct seq_file *s, void *v, loff_t *pos)
+static void *proc_printk_formats_next(struct seq_file *s, void *vmod, loff_t *pos)
 {
 	return find_next_format(v, pos);
 }
 
-static void proc_printk_formats_stop(struct seq_file *s, void *v)
+static void proc_printk_formats_stop(struct seq_file *s, void *vmod)
 {
 	mutex_unlock(&module_printk_fmt_mutex);
 	kfree(v);
 }
 
-static int proc_printk_formats_show(struct seq_file *s, void *v)
+static int proc_printk_formats_show(struct seq_file *s, void *vmod)
 {
-	seq_puts(s, ((struct module_printk_fmt *)v)->fmt);
+	seq_puts(s, ((struct module_printk_fmt *)vmod)->fmt);
 	return 0;
 }
 
