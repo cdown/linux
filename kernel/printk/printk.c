@@ -641,7 +641,8 @@ void store_module_printk_fmts(struct module *mod,
 
 	mutex_lock(&module_printk_fmt_mutex);
 
-	pr_err("Got %d bytes of printk fmts\n", max);
+	pr_debug("Got %d bytes of printk fmts to store from %s\n", max,
+								   mod->name);
 
 	while (pos < max) {
 		const char *mfmt = start + pos;
@@ -668,21 +669,12 @@ void store_module_printk_fmts(struct module *mod,
 		strcpy(hfmt, mfmt);
 		mod_fmt_obj->fmt = hfmt;
 
-		pr_err("&mod_fmt_obj: %px, mod_fmt_obj: %px, &hfmt: %px, hfmt: %px\n", &mod_fmt_obj, mod_fmt_obj, &hfmt, hfmt);
-
-		pr_err("Added to list: %s\n", mod_fmt_obj->fmt);
-
 		list_add_tail(&mod_fmt_obj->list, &module_printk_fmt_list);
 
-		/* There may be multiple nulls */
-		while (pos < max && start[pos] != '\0') {
-			pr_err("bump pos != nul pre: %d", (unsigned)pos);
+		while (pos < max && start[pos] != '\0')
 			++pos;
-		}
-		while (pos < max && start[pos] == '\0') {
-			pr_err("bump pos == nul pre: %d", (unsigned)pos);
+		while (pos < max && start[pos] == '\0')
 			++pos;
-		}
 	}
 
 	mutex_unlock(&module_printk_fmt_mutex);
@@ -711,7 +703,8 @@ static int module_printk_fmts_notify(struct notifier_block *self,
 	if (mod->printk_fmts_text_size) {
 		switch (val) {
 		case MODULE_STATE_COMING:
-			store_module_printk_fmts(mod, mod->printk_fmts_start, mod->printk_fmts_text_size);
+			store_module_printk_fmts(mod, mod->printk_fmts_start,
+						 mod->printk_fmts_text_size);
 			break;
 
 		case MODULE_STATE_GOING:
@@ -839,7 +832,8 @@ static void *proc_printk_formats_start(struct seq_file *s, loff_t *pos)
 	return find_next_format(NULL, pos);
 }
 
-static void *proc_printk_formats_next(struct seq_file *s, void *vmod, loff_t *pos)
+static void *proc_printk_formats_next(struct seq_file *s, void *vmod,
+				      loff_t *pos)
 {
 	return find_next_format(vmod, pos);
 }
@@ -865,7 +859,8 @@ static const struct seq_operations proc_printk_formats_ops = {
 
 static int __init proc_printk_formats_init(void)
 {
-	if (!proc_create_seq("printk_formats", 0, NULL, &proc_printk_formats_ops))
+	if (!proc_create_seq("printk_formats", 0, NULL,
+			     &proc_printk_formats_ops))
 		return -ENOMEM;
 
 	return 0;
