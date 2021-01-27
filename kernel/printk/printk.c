@@ -620,6 +620,10 @@ out:
 
 /* /proc/printk_formats */
 
+static loff_t pos_to_module_idx(loff_t *pos) {
+	return *pos - (__stop_printk_fmts - __start_printk_fmts);
+}
+
 #ifdef CONFIG_MODULES
 
 static LIST_HEAD(module_printk_fmt_list);
@@ -726,14 +730,75 @@ static int __init module_printk_fmts_init(void)
 	return 0;
 }
 
+static struct module_printk_fmt *find_next_module_format(void *vmod,
+	struct module_printk_fmt *ret, loff_t *pos)
+{
+	struct module_printk_fmt *mod = NULL;
+	loff_t module_idx = pos_to_module_idx(pos);
+
+	(*pos)++;
+
+	/*
+	 * Caller is supposed to make sure that this position relates to a
+	 * module.
+	 */
+	if (WARN_ON(module_idx < 0))
+		return NULL;
+
+	if (!vmod || module_idx == 0) {
+		loff_t cur = 0;
+
+		/*
+		 * A new run from _start with no state, or the first iteration
+		 * of the mod list, so just walk it. In general we should get
+		 * state, so this should be rare outside of the first run.
+		 */
+
+		list_for_each_entry(mod, &module_printk_fmt_list, list) {
+			if (cur == module_idx)
+				goto found_mod;
+			cur++;
+		}
+
+		/*
+		 * List exhausted, check we were only probing and not wildly
+		 * out of bounds.
+		 */
+
+		WARN_ON(module_idx > cur + 1);
+		kfree(ret);
+		return NULL;
+	}
+
+	/* State is already present, no need to O(n) walk. */
+
+	if (ret->list.next == &module_printk_fmt_list) {
+		kfree(ret);
+		return NULL;
+	}
+
+	mod = container_of(ret->list.next, typeof(*ret), list);
+
+found_mod:
+	ret->fmt = mod->fmt;
+	ret->module = mod->module;
+	ret->list = mod->list;
+
+	return ret;
+}
+
 fs_initcall(module_printk_fmts_init);
+
+#else /* !CONFIG_MODULES */
+
+static struct module_printk_fmt *find_next_module_format(void *vmod,
+	struct module_printk_fmt *ret, loff_t *pos)
+{
+	return NULL;
+}
 
 #endif /* CONFIG_MODULES */
 
-
-static loff_t pos_to_module_idx(loff_t *pos) {
-	return *pos - (__stop_printk_fmts - __start_printk_fmts);
-}
 
 /*
  * Finds a printk format from, either from the built in section or the module
@@ -747,7 +812,7 @@ static struct module_printk_fmt *find_next_format(void *vmod, loff_t *pos)
 {
 	loff_t module_idx = pos_to_module_idx(pos);
 	bool is_builtin_format = module_idx < 0;
-	struct module_printk_fmt *mod = NULL, *ret = NULL;
+	struct module_printk_fmt *ret = NULL;
 
 	if (!vmod) {
 		ret = kmalloc(sizeof(*ret), GFP_KERNEL);
@@ -780,49 +845,8 @@ static struct module_printk_fmt *find_next_format(void *vmod, loff_t *pos)
 	 * format list.
 	 */
 
-	(*pos)++;
+	return find_next_module_format(vmod, ret, pos);
 
-	if (!vmod || module_idx == 0) {
-		struct module_printk_fmt *fmt;
-		loff_t cur = 0;
-
-		/*
-		 * A new run from _start with no state, or the first iteration
-		 * of the mod list, so just walk it. In general we should get
-		 * state, so this should be rare outside of the first run.
-		 */
-
-		list_for_each_entry(fmt, &module_printk_fmt_list, list) {
-			if (cur == module_idx) {
-				ret->fmt = fmt->fmt;
-				ret->module = fmt->module;
-				ret->list = fmt->list;
-				return ret;
-			}
-			cur++;
-		}
-
-		/*
-		 * List exhausted, check we were only probing and not wildly
-		 * out of bounds.
-		 */
-
-		WARN_ON(module_idx > cur + 1);
-		kfree(ret);
-		return NULL;
-	}
-
-	if (ret->list.next == &module_printk_fmt_list) {
-		kfree(ret);
-		return NULL;
-	}
-
-	mod = container_of(ret->list.next, typeof(*ret), list);
-	ret->fmt = mod->fmt;
-	ret->module = mod->module;
-	ret->list = mod->list;
-
-	return ret;
 }
 
 
