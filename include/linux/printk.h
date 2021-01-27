@@ -329,13 +329,12 @@ extern char __stop_printk_fmts[];
  * This macro expands to a printk with KERN_EMERG loglevel. It uses pr_fmt() to
  * generate the format string.
  */
-#define pr_emerg(fmt, ...) \
-	do {                                                                   \
+#define pr_emerg(fmt, ...) ({ \
 		if (__builtin_constant_p(fmt))                                 \
 			printk_store_fmt(KERN_EMERG pr_fmt(fmt), ##__VA_ARGS__); \
 		else                                                           \
 			printk(KERN_EMERG pr_fmt(fmt), ##__VA_ARGS__);           \
-	} while (0)
+	})
 /**
  * pr_alert - Print an alert-level message
  * @fmt: format string
@@ -344,13 +343,12 @@ extern char __stop_printk_fmts[];
  * This macro expands to a printk with KERN_ALERT loglevel. It uses pr_fmt() to
  * generate the format string.
  */
-#define pr_alert(fmt, ...) \
-	do {                                                                   \
+#define pr_alert(fmt, ...) ({ \
 		if (__builtin_constant_p(fmt))                                 \
 			printk_store_fmt(KERN_ALERT pr_fmt(fmt), ##__VA_ARGS__); \
 		else                                                           \
 			printk(KERN_ALERT pr_fmt(fmt), ##__VA_ARGS__);           \
-	} while (0)
+	})
 /**
  * pr_crit - Print a critical-level message
  * @fmt: format string
@@ -359,13 +357,12 @@ extern char __stop_printk_fmts[];
  * This macro expands to a printk with KERN_CRIT loglevel. It uses pr_fmt() to
  * generate the format string.
  */
-#define pr_crit(fmt, ...) \
-	do {                                                                   \
+#define pr_crit(fmt, ...) ({ \
 		if (__builtin_constant_p(fmt))                                 \
 			printk_store_fmt(KERN_CRIT pr_fmt(fmt), ##__VA_ARGS__); \
 		else                                                           \
 			printk(KERN_CRIT pr_fmt(fmt), ##__VA_ARGS__);           \
-	} while (0)
+	})
 /**
  * pr_err - Print an error-level message
  * @fmt: format string
@@ -374,13 +371,12 @@ extern char __stop_printk_fmts[];
  * This macro expands to a printk with KERN_ERR loglevel. It uses pr_fmt() to
  * generate the format string.
  */
-#define pr_err(fmt, ...)                                                       \
-	do {                                                                   \
+#define pr_err(fmt, ...) ({                                                    \
 		if (__builtin_constant_p(fmt))                                 \
 			printk_store_fmt(KERN_ERR pr_fmt(fmt), ##__VA_ARGS__); \
 		else                                                           \
 			printk(KERN_ERR pr_fmt(fmt), ##__VA_ARGS__);           \
-	} while (0)
+	})
 
 /**
  * pr_warn - Print a warning-level message
@@ -390,13 +386,12 @@ extern char __stop_printk_fmts[];
  * This macro expands to a printk with KERN_WARNING loglevel. It uses pr_fmt()
  * to generate the format string.
  */
-#define pr_warn(fmt, ...) \
-	do {                                                                   \
+#define pr_warn(fmt, ...) ({ \
 		if (__builtin_constant_p(fmt))                                 \
 			printk_store_fmt(KERN_WARNING pr_fmt(fmt), ##__VA_ARGS__); \
 		else                                                           \
 			printk(KERN_WARNING pr_fmt(fmt), ##__VA_ARGS__);           \
-	} while (0)
+	})
 /**
  * pr_notice - Print a notice-level message
  * @fmt: format string
@@ -405,13 +400,12 @@ extern char __stop_printk_fmts[];
  * This macro expands to a printk with KERN_NOTICE loglevel. It uses pr_fmt() to
  * generate the format string.
  */
-#define pr_notice(fmt, ...) \
-	do {                                                                   \
+#define pr_notice(fmt, ...) ({ \
 		if (__builtin_constant_p(fmt))                                 \
 			printk_store_fmt(KERN_NOTICE pr_fmt(fmt), ##__VA_ARGS__); \
 		else                                                           \
 			printk(KERN_NOTICE pr_fmt(fmt), ##__VA_ARGS__);           \
-	} while (0)
+	})
 
 /**
  * pr_info - Print an info-level message
@@ -421,13 +415,12 @@ extern char __stop_printk_fmts[];
  * This macro expands to a printk with KERN_INFO loglevel. It uses pr_fmt() to
  * generate the format string.
  */
-#define pr_info(fmt, ...) \
-	do {                                                                   \
+#define pr_info(fmt, ...) ({ \
 		if (__builtin_constant_p(fmt))                                 \
 			printk_store_fmt(KERN_INFO pr_fmt(fmt), ##__VA_ARGS__); \
 		else                                                           \
 			printk(KERN_INFO pr_fmt(fmt), ##__VA_ARGS__);           \
-	} while (0)
+	})
 
 /**
  * pr_cont - Continues a previous log message in the same line.
@@ -438,13 +431,12 @@ extern char __stop_printk_fmts[];
  * used when continuing a log message with no newline ('\n') enclosed. Otherwise
  * it defaults back to KERN_DEFAULT loglevel.
  */
-#define pr_cont(fmt, ...) \
-	do {                                                                   \
+#define pr_cont(fmt, ...) ({ \
 		if (__builtin_constant_p(fmt))                                 \
 			printk_store_fmt(KERN_CONT fmt, ##__VA_ARGS__); \
 		else                                                           \
 			printk(KERN_CONT fmt, ##__VA_ARGS__);           \
-	} while (0)
+	})
 
 /**
  * pr_devel - Print a debug-level message conditionally
