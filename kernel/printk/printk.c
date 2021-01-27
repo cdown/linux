@@ -743,9 +743,12 @@ static loff_t pos_to_module_idx(loff_t *pos) {
 }
 
 /*
- * Finds a printk format and updates pos to the next one.
+ * Finds a printk format from, either from the built in section or the module
+ * list, updating `pos' to the next entry.
  *
- * Returns NULL if out of formats.
+ * Internally allocates a buffer for module_printk_fmt, which will either be
+ * destroyed internally on list exhaustion, or by proc_printk_formats_stop if
+ * the seq_file interface itself decides to start over.
  */
 static struct module_printk_fmt *find_next_format(void *v, loff_t *pos)
 {
@@ -753,10 +756,6 @@ static struct module_printk_fmt *find_next_format(void *v, loff_t *pos)
 	bool is_builtin_format = module_idx < 0;
 	struct module_printk_fmt *mod = NULL, *ret = NULL;
 
-	/*
-	 * We need to make sure to use the exact same pointer as in the list
-	 * for container_of later.
-	 */
 	if (!v) {
 		ret = kmalloc(sizeof(*ret), GFP_KERNEL);
 		if (!ret) {
@@ -782,12 +781,7 @@ static struct module_printk_fmt *find_next_format(void *v, loff_t *pos)
 		return ret;
 	}
 
-	/* It must be a module format, or invalid */
-
-	(*pos)++;
-	mutex_lock(&module_printk_fmt_mutex);
-
-	pr_err("Inside lock\n");
+	/* Ok, so it must be either a module, or out of bounds. */
 
 	if (!v || module_idx == 0) {
 		struct module_printk_fmt *fmt;
@@ -795,61 +789,48 @@ static struct module_printk_fmt *find_next_format(void *v, loff_t *pos)
 
 		/*
 		 * A new run from _start with no state, or the first iteration
-		 * of the mod list, so walk it.
+		 * of the mod list, so just walk it. In general we should get
+		 * state, so this should be rare outside of the first run.
 		 */
 
-		pr_err("Start list\n");
 		list_for_each_entry(fmt, &module_printk_fmt_list,
 					 list) {
 			if (cur == module_idx) {
-				pr_err("Found\n");
-
 				ret->fmt = fmt->fmt;
 				ret->module = fmt->module;
 				ret->list = fmt->list;
-
-				goto out_module_unlock;
+				return ret;
 			}
 			cur++;
 		}
-		pr_err("End list\n");
 
 		/*
-		 * List exhausted, check we were only probing and not
-		 * unexpectedly out of bounds
+		 * List exhausted, check we were only probing and not wildly
+		 * out of bounds.
 		 */
+
 		WARN_ON(module_idx > cur + 1);
 		kfree(ret);
-		ret = NULL;
-		goto out_module_unlock;
+		return NULL;
 	}
 
-	pr_err("No walk 1\n");
 	if (ret->list.next == &module_printk_fmt_list) {
 		kfree(ret);
-		ret = NULL;
-		goto out_module_unlock;
+		return NULL;
 	}
 
-	pr_err("No walk 2\n");
-
-	mod = container_of(ret->list.next, typeof(*ret),
-			       list);
-
-	pr_err("No walk 3\n");
-
+	mod = container_of(ret->list.next, typeof(*ret), list);
 	ret->fmt = mod->fmt;
 	ret->module = mod->module;
 	ret->list = mod->list;
 
-out_module_unlock:
-	mutex_unlock(&module_printk_fmt_mutex);
 	return ret;
 }
 
 
 static void *proc_printk_formats_start(struct seq_file *s, loff_t *pos)
 {
+	mutex_lock(&module_printk_fmt_mutex);
 	return find_next_format(NULL, pos);
 }
 
@@ -860,6 +841,7 @@ static void *proc_printk_formats_next(struct seq_file *s, void *v, loff_t *pos)
 
 static void proc_printk_formats_stop(struct seq_file *s, void *v)
 {
+	mutex_unlock(&module_printk_fmt_mutex);
 	kfree(v);
 }
 
