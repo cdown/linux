@@ -841,13 +841,13 @@ static void *proc_printk_formats_start(struct seq_file *s, loff_t *pos)
 
 static void *proc_printk_formats_next(struct seq_file *s, void *vmod, loff_t *pos)
 {
-	return find_next_format(v, pos);
+	return find_next_format(vmod, pos);
 }
 
 static void proc_printk_formats_stop(struct seq_file *s, void *vmod)
 {
 	mutex_unlock(&module_printk_fmt_mutex);
-	kfree(v);
+	kfree(vmod);
 }
 
 static int proc_printk_formats_show(struct seq_file *s, void *vmod)
