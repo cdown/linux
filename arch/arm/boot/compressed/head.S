@@ -174,10 +174,7 @@
 		.macro	be32tocpu, val, tmp
 #ifndef __ARMEB__
 		/* convert to little endian */
-		eor	\tmp, \val, \val, ror #16
-		bic	\tmp, \tmp, #0x00ff0000
-		mov	\val, \val, ror #8
-		eor	\val, \val, \tmp, lsr #8
+		rev_l	\val, \tmp
 #endif
 		.endm
 
@@ -282,10 +279,40 @@ not_angel:
 		 * are already placing their zImage in (eg) the top 64MB
 		 * of this range.
 		 */
-		mov	r4, pc
-		and	r4, r4, #0xf8000000
+		mov	r0, pc
+		and	r0, r0, #0xf8000000
+#ifdef CONFIG_USE_OF
+		adr	r1, LC1
+#ifdef CONFIG_ARM_APPENDED_DTB
+		/*
+		 * Look for an appended DTB.  If found, we cannot use it to
+		 * validate the calculated start of physical memory, as its
+		 * memory nodes may need to be augmented by ATAGS stored at
+		 * an offset from the same start of physical memory.
+		 */
+		ldr	r2, [r1, #4]	@ get &_edata
+		add	r2, r2, r1	@ relocate it
+		ldr	r2, [r2]	@ get DTB signature
+		ldr	r3, =OF_DT_MAGIC
+		cmp	r2, r3		@ do we have a DTB there?
+		beq	1f		@ if yes, skip validation
+#endif /* CONFIG_ARM_APPENDED_DTB */
+
+		/*
+		 * Make sure we have some stack before calling C code.
+		 * No GOT fixup has occurred yet, but none of the code we're
+		 * about to call uses any global variables.
+		 */
+		ldr	sp, [r1]	@ get stack location
+		add	sp, sp, r1	@ apply relocation
+
+		/* Validate calculated start against passed DTB */
+		mov	r1, r8
+		bl	fdt_check_mem_start
+1:
+#endif /* CONFIG_USE_OF */
 		/* Determine final kernel image address. */
-		add	r4, r4, #TEXT_OFFSET
+		add	r4, r0, #TEXT_OFFSET
 #else
 		ldr	r4, =zreladdr
 #endif
@@ -609,11 +636,24 @@ not_relocated:	mov	r0, #0
 		mov	r3, r7
 		bl	decompress_kernel
 
-		get_inflated_image_size	r1, r2, r3
-
-		mov	r0, r4			@ start of inflated image
-		add	r1, r1, r0		@ end of inflated image
+		@
+		@ Perform a cache clean before disabling the MMU entirely.
+		@ In cases where the MMU needs to be disabled first (v7+),
+		@ the clean is performed again by cache_off(), using by-VA
+		@ operations on the range [R0, R1], making this prior call to
+		@ cache_clean_flush() redundant. In other cases, the clean is
+		@ performed by set/way and R0/R1 are ignored.
+		@
+		mov	r0, #0
+		mov	r1, #0
 		bl	cache_clean_flush
+
+		get_inflated_image_size	r1, r2, r3
+		ldr	r2, =_kernel_bss_size
+		add	r1, r1, r2
+
+		mov	r0, r4			@ start of decompressed kernel
+		add	r1, r1, r0		@ end of kernel BSS
 		bl	cache_off
 
 #ifdef CONFIG_ARM_VIRT_EXT
@@ -917,10 +957,10 @@ __common_mmu_cache_on:
  * from the start of the block.  Please note this is all position
  * independent code.
  *
- *  r1  = corrupted
  *  r2  = corrupted
  *  r3  = block offset
  *  r9  = corrupted
+ *  r10 = corrupted
  *  r12 = corrupted
  */
 
@@ -940,10 +980,10 @@ call_cache_fn:	adr	r12, proc_types
 #else
 		ldr	r9, =CONFIG_PROCESSOR_ID
 #endif
-1:		ldr	r1, [r12, #0]		@ get value
+1:		ldr	r10, [r12, #0]		@ get value
 		ldr	r2, [r12, #4]		@ get mask
-		eor	r1, r1, r9		@ (real ^ match)
-		tst	r1, r2			@       & mask
+		eor	r10, r10, r9		@ (real ^ match)
+		tst	r10, r2			@       & mask
  ARM(		addeq	pc, r12, r3		) @ call cache function
  THUMB(		addeq	r12, r3			)
  THUMB(		moveq	pc, r12			) @ call cache function
@@ -1124,7 +1164,7 @@ proc_types:
  * reading the control register, but ARMv4 does.
  *
  * On exit,
- *  r0, r1, r2, r3, r9, r12 corrupted
+ *  r0, r1, r2, r3, r9, r10, r11, r12 corrupted
  * This routine must preserve:
  *  r4, r7, r8
  */
@@ -1162,21 +1202,22 @@ __armv4_mmu_cache_off:
 		mov	pc, lr
 
 __armv7_mmu_cache_off:
-		mrc	p15, 0, r0, c1, c0
+		mrc	p15, 0, r3, c1, c0
 #ifdef CONFIG_MMU
-		bic	r0, r0, #0x000d
+		bic	r3, r3, #0x0005
 #else
-		bic	r0, r0, #0x000c
+		bic	r3, r3, #0x0004
 #endif
-		mcr	p15, 0, r0, c1, c0	@ turn MMU and cache off
-		mov	r0, #0
+		mcr	p15, 0, r3, c1, c0	@ turn MMU and cache off
+		mov	r3, #0
 #ifdef CONFIG_MMU
-		mcr	p15, 0, r0, c8, c7, 0	@ invalidate whole TLB
+		mcr	p15, 0, r3, c8, c7, 0	@ invalidate whole TLB
 #endif
-		mcr	p15, 0, r0, c7, c5, 6	@ invalidate BTC
-		mcr	p15, 0, r0, c7, c10, 4	@ DSB
-		mcr	p15, 0, r0, c7, c5, 4	@ ISB
-		mov	pc, lr
+		mcr	p15, 0, r3, c7, c5, 6	@ invalidate BTC
+		mcr	p15, 0, r3, c7, c10, 4	@ DSB
+		mcr	p15, 0, r3, c7, c5, 4	@ ISB
+
+		b	__armv7_mmu_cache_flush
 
 /*
  * Clean and flush the cache to maintain consistency.
@@ -1192,7 +1233,6 @@ __armv7_mmu_cache_off:
 		.align	5
 cache_clean_flush:
 		mov	r3, #16
-		mov	r11, r1
 		b	call_cache_fn
 
 __armv4_mpu_cache_flush:
@@ -1243,15 +1283,15 @@ __armv7_mmu_cache_flush:
 		mcr	p15, 0, r10, c7, c14, 0	@ clean+invalidate D
 		b	iflush
 hierarchical:
-		dcache_line_size r1, r2		@ r1 := dcache min line size
-		sub	r2, r1, #1		@ r2 := line size mask
+		dcache_line_size r11, r2	@ r11 := dcache min line size
+		sub	r2, r11, #1		@ r2 := line size mask
 		bic	r0, r0, r2		@ round down start to line size
-		sub	r11, r11, #1		@ end address is exclusive
-		bic	r11, r11, r2		@ round down end to line size
-0:		cmp	r0, r11			@ finished?
+		sub	r1, r1, #1		@ end address is exclusive
+		bic	r1, r1, r2		@ round down end to line size
+0:		cmp	r0, r1			@ finished?
 		bgt	iflush
 		mcr	p15, 0, r0, c7, c14, 1	@ Dcache clean/invalidate by VA
-		add	r0, r0, r1
+		add	r0, r0, r11
 		b	0b
 iflush:
 		mcr	p15, 0, r10, c7, c10, 4	@ DSB
