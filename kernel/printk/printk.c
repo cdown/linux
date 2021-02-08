@@ -47,7 +47,7 @@
 #include <linux/sched/clock.h>
 #include <linux/sched/debug.h>
 #include <linux/sched/task_stack.h>
-#include <linux/proc_fs.h>
+#include <linux/debugfs.h>
 
 #include <linux/uaccess.h>
 #include <asm/sections.h>
@@ -620,7 +620,7 @@ out:
 
 #ifdef CONFIG_PRINTK_ENUMERATION
 
-/* /proc/printk_formats - userspace enumeration of printk formats  */
+/* debugfs/printk/formats - userspace enumeration of printk formats */
 
 struct printk_fmt_sec {
 	struct list_head list;
@@ -752,7 +752,7 @@ static const char *ps_get_module_name(const struct printk_fmt_sec *ps)
 }
 #endif /* CONFIG_MODULES */
 
-static int proc_pf_show(struct seq_file *s, void *v)
+static int debugfs_pf_show(struct seq_file *s, void *v)
 {
 	const struct printk_fmt_sec *ps = NULL;
 
@@ -771,33 +771,43 @@ static int proc_pf_show(struct seq_file *s, void *v)
 	return 0;
 }
 
-static int proc_pf_open(struct inode *inode, struct file *file)
+static int debugfs_pf_open(struct inode *inode, struct file *file)
 {
 	/*
 	 * We don't need to hold the mutex here to ensure that
 	 * printk_fmts_total_size doesn't change prior to iteration -- worst
 	 * case, seq_read_iter() will reallocate.
 	 */
-	return single_open_size(file, proc_pf_show, NULL,
+	return single_open_size(file, debugfs_pf_show, NULL,
 		READ_ONCE(printk_fmts_total_size));
 }
 
-static const struct proc_ops printk_proc_ops = {
-	.proc_flags	= PROC_ENTRY_PERMANENT,
-	.proc_open	= proc_pf_open,
-	.proc_read_iter	= seq_read_iter,
-	.proc_lseek	= seq_lseek,
-	.proc_release	= single_release,
+static const struct file_operations dfs_formats_fops = {
+	.open = debugfs_pf_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = single_release,
 };
 
 static int __init init_printk_fmts(void)
 {
-	const struct proc_dir_entry *pd = NULL;
+	struct dentry *dfs_root = debugfs_create_dir("printk", NULL);
+	struct dentry *dfs_formats = NULL;
 
 	store_printk_fmt_sec(NULL, __start_printk_fmts, __stop_printk_fmts);
-	pd = proc_create("printk_formats", 0, NULL, &printk_proc_ops);
 
-	return pd ? 0 : -ENOMEM;
+	if (IS_ERR_OR_NULL(dfs_root))
+		return -ENOMEM;
+
+	dfs_formats = debugfs_create_file(
+		"formats",
+		0444,
+		dfs_root,
+		NULL,
+		&dfs_formats_fops
+	);
+
+	return IS_ERR_OR_NULL(dfs_formats) ? -ENOMEM : 0;
 }
 
 core_initcall(init_printk_fmts);
