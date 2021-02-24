@@ -516,7 +516,7 @@ struct module {
 	struct klp_modinfo *klp_info;
 #endif
 
-#ifdef CONFIG_PRINTK_ENUMERATION
+#ifdef CONFIG_PRINTK_INDEX
 	unsigned int printk_fmts_sec_size;
 	const char **printk_fmts_start;
 #endif

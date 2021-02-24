@@ -3429,7 +3429,7 @@ static int find_module_sections(struct module *mod, struct load_info *info)
 						sizeof(unsigned long),
 						&mod->num_kprobe_blacklist);
 #endif
-#ifdef CONFIG_PRINTK_ENUMERATION
+#ifdef CONFIG_PRINTK_INDEX
 	mod->printk_fmts_start = section_objs(info, ".printk_fmts",
 					      sizeof(*mod->printk_fmts_start),
 					      &mod->printk_fmts_sec_size);

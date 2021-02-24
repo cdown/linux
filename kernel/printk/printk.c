@@ -619,10 +619,10 @@ out:
 	return len;
 }
 
-#ifdef CONFIG_PRINTK_ENUMERATION
+#ifdef CONFIG_PRINTK_INDEX
 
 /*
- * debugfs/printk/formats/ - userspace enumeration of printk formats
+ * debugfs/printk/formats/ - userspace indexing of printk formats
  *
  * The format is the same as typically used by printk, <KERN_SOH><level>fmt,
  * with each distinct format separated by \0.
@@ -833,7 +833,7 @@ static int __init init_printk_fmts(void)
 
 core_initcall(init_printk_fmts);
 
-#endif /* CONFIG_PRINTK_ENUMERATION */
+#endif /* CONFIG_PRINTK_INDEX */
 
 /* /dev/kmsg - userspace message inject/listen interface */
 struct devkmsg_user {
@@ -2334,7 +2334,7 @@ EXPORT_SYMBOL_GPL(vprintk_default);
  *
  * This is _printk(). It can be called from any context. We want it to work.
  *
- * If printk enumeration is enabled, _printk() is called from printk_store_fmt.
+ * If printk indexing is enabled, _printk() is called from printk_store_fmt.
  * Otherwise, printk is simply #defined to _printk.
  *
  * We try to grab the console_lock. If we succeed, it's easy - we log the

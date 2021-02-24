@@ -284,7 +284,7 @@ static inline void printk_safe_flush_on_panic(void)
 
 extern int kptr_restrict;
 
-#ifdef CONFIG_PRINTK_ENUMERATION
+#ifdef CONFIG_PRINTK_INDEX
 extern const char *__start_printk_fmts[];
 extern const char *__stop_printk_fmts[];
 #endif
@@ -306,7 +306,7 @@ extern const char *__stop_printk_fmts[];
 #define pr_fmt(fmt) fmt
 #endif
 
-#ifdef CONFIG_PRINTK_ENUMERATION
+#ifdef CONFIG_PRINTK_INDEX
 #define printk_store_fmt(func, fmt, ...)				       \
 	({								       \
 		int _printk_ret;					       \
@@ -331,10 +331,10 @@ extern const char *__stop_printk_fmts[];
 #define printk(fmt, ...) printk_store_fmt(_printk, fmt, ##__VA_ARGS__)
 #define printk_deferred(fmt, ...)					       \
 	printk_store_fmt(_printk_deferred, fmt, ##__VA_ARGS__)
-#else /* !CONFIG_PRINTK_ENUMERATION */
+#else /* !CONFIG_PRINTK_INDEX */
 #define printk(...) _printk(__VA_ARGS__)
 #define printk_deferred(...) _printk_deferred(__VA_ARGS__)
-#endif /* CONFIG_PRINTK_ENUMERATION */
+#endif /* CONFIG_PRINTK_INDEX */
 
 /**
  * pr_emerg - Print an emergency-level message

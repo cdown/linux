@@ -309,7 +309,7 @@
 #define ACPI_PROBE_TABLE(name)
 #endif
 
-#ifdef CONFIG_PRINTK_ENUMERATION
+#ifdef CONFIG_PRINTK_INDEX
 #define PRINTK_FMTS							\
 	.printk_fmts : AT(ADDR(.printk_fmts) - LOAD_OFFSET) {		\
 		__start_printk_fmts = .;				\
