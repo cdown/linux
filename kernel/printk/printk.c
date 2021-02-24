@@ -630,7 +630,7 @@ out:
 
 struct printk_fmt_sec {
 	struct hlist_node hnode;
-	struct module *module;
+	struct module *mod;
 	struct dentry *file;
 	const char **start;
 	const char **end;
@@ -679,7 +679,7 @@ static struct printk_fmt_sec *find_printk_fmt_sec(struct module *mod)
 
 	hash_for_each_possible(printk_fmts_mod_sections, ps, hnode,
 			       (unsigned long)mod)
-		if (ps->module == mod)
+		if (ps->mod == mod)
 			return ps;
 
 	return NULL;
@@ -696,7 +696,7 @@ static void store_printk_fmt_sec(struct module *mod, const char **start,
 	if (!ps)
 		return;
 
-	ps->module = mod;
+	ps->mod = mod;
 	ps->start = start;
 	ps->end = end;
 
@@ -762,7 +762,7 @@ static int module_printk_fmts_notify(struct notifier_block *self,
 
 static const char *ps_get_module_name(const struct printk_fmt_sec *ps)
 {
-	return ps->module ? ps->module->name : "vmlinux";
+	return ps->mod ? ps->mod->name : "vmlinux";
 }
 
 static struct notifier_block module_printk_fmts_nb = {
