@@ -376,6 +376,27 @@ void seq_escape(struct seq_file *m, const char *s, const char *esc)
 }
 EXPORT_SYMBOL(seq_escape);
 
+/**
+ *	seq_escape_printf_format - print string into buffer, escaping
+ *		characters that are escaped in printf format,
+ *	@m:	target buffer
+ *	@s:	string
+ *
+ *	Puts string into buffer and escape characters that are
+ *	escaped in printf format.
+ *	Use seq_has_overflowed() to check for errors.
+ */
+void seq_escape_printf_format(struct seq_file *m, const char *s)
+{
+	char *buf;
+	size_t size = seq_get_buf(m, &buf);
+	int ret;
+
+	ret = string_escape_str(s, buf, size, ESCAPE_SPACE | ESCAPE_SPECIAL, NULL);
+	seq_commit(m, ret < size ? ret : -1);
+}
+EXPORT_SYMBOL(seq_escape_printf_format);
+
 void seq_escape_mem_ascii(struct seq_file *m, const char *src, size_t isz)
 {
 	char *buf;

@@ -623,9 +623,6 @@ out:
 
 /*
  * debugfs/printk/formats/ - userspace indexing of printk formats
- *
- * The format is the same as typically used by printk, <KERN_SOH><level>fmt,
- * with each distinct format separated by \0.
  */
 
 struct printk_fmt_sec {
@@ -659,20 +656,6 @@ static const struct file_operations dfs_formats_fops = {
 	.release = single_release,
 };
 
-static size_t printk_fmt_size(const char *fmt)
-{
-	size_t sz = strlen(fmt) + 1;
-
-	/*
-	 * Some printk formats don't start with KERN_SOH + level. We will add
-	 * it later when rendering the output.
-	 */
-	if (unlikely(fmt[0] != KERN_SOH_ASCII))
-		sz += 2;
-
-	return sz;
-}
-
 static struct printk_fmt_sec *find_printk_fmt_sec(struct module *mod)
 {
 	struct printk_fmt_sec *ps = NULL;
@@ -689,8 +672,6 @@ static void store_printk_fmt_sec(struct module *mod, const char **start,
 				 const char **end)
 {
 	struct printk_fmt_sec *ps = NULL;
-	const char **fptr = NULL;
-	size_t size = 0;
 
 	ps = kmalloc(sizeof(struct printk_fmt_sec), GFP_KERNEL);
 	if (!ps)
@@ -700,18 +681,12 @@ static void store_printk_fmt_sec(struct module *mod, const char **start,
 	ps->start = start;
 	ps->end = end;
 
-	for (fptr = ps->start; fptr < ps->end; fptr++)
-		size += printk_fmt_size(*fptr);
-
 	mutex_lock(&printk_fmts_mutex);
 	hash_add(printk_fmts_mod_sections, &ps->hnode, (unsigned long)mod);
 	mutex_unlock(&printk_fmts_mutex);
 
 	ps->file = debugfs_create_file(ps_get_module_name(ps), 0444,
 				       dfs_formats, mod, &dfs_formats_fops);
-
-	if (!IS_ERR(ps->file))
-		d_inode(ps->file)->i_size = size;
 }
 
 #ifdef CONFIG_MODULES
@@ -783,6 +758,8 @@ static const char *ps_get_module_name(const struct printk_fmt_sec *ps)
 }
 #endif /* CONFIG_MODULES */
 
+static u16 parse_prefix(const char *text, int *level, enum log_flags *lflags);
+
 static int debugfs_pf_show(struct seq_file *s, void *v)
 {
 	struct module *mod = s->file->f_inode->i_private;
@@ -804,11 +781,13 @@ static int debugfs_pf_show(struct seq_file *s, void *v)
 	}
 
 	for (fptr = ps->start; fptr < ps->end; fptr++) {
-		/* For callsites without KERN_SOH + level preamble. */
-		if (unlikely(*fptr[0] != KERN_SOH_ASCII))
-			seq_printf(s, "%c%d", KERN_SOH_ASCII,
-				   MESSAGE_LOGLEVEL_DEFAULT);
-		seq_printf(s, "%s%c", *fptr, '\0');
+		int level = LOGLEVEL_DEFAULT;
+		enum log_flags lflags = 0;
+		u16 prefix_len = parse_prefix(*fptr, &level, &lflags);
+
+		seq_printf(s, "<%d%s> ", level, lflags & LOG_CONT ? ",c" : "");
+		seq_escape_printf_format(s, *fptr + prefix_len);
+		seq_putc(s, '\n');
 	}
 
 out_unlock:
@@ -818,7 +797,8 @@ out_unlock:
 
 static int debugfs_pf_open(struct inode *inode, struct file *file)
 {
-	return single_open_size(file, debugfs_pf_show, NULL, inode->i_size);
+	/* TODO: get rid of size altogether */
+	return single_open_size(file, debugfs_pf_show, NULL, 1 << 20);
 }
 
 static int __init init_printk_fmts(void)
@@ -2113,7 +2093,7 @@ static inline u32 printk_caller_id(void)
  *
  * Return: The length of the parsed level and control flags.
  */
-static u16 parse_prefix(char *text, int *level, enum log_flags *lflags)
+static u16 parse_prefix(const char *text, int *level, enum log_flags *lflags)
 {
 	u16 prefix_len = 0;
 	int kern_level;
