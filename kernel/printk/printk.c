@@ -646,8 +646,8 @@ struct pi_sec {
 	struct hlist_node hnode;
 	struct module *mod;
 	struct dentry *file;
-	struct printk_index *start;
-	struct printk_index *end;
+	struct pi_object *start;
+	struct pi_object *end;
 };
 
 /* The base dir for module formats, typically debugfs/printk/formats/ */
@@ -713,8 +713,8 @@ static void remove_pi_sec(struct module *mod)
 	kfree(ps);
 }
 
-static void store_pi_sec(struct module *mod, struct printk_index *start,
-				 struct printk_index *end)
+static void store_pi_sec(struct module *mod, struct pi_object *start,
+			 struct pi_object *end)
 {
 	struct pi_sec *ps = NULL;
 
@@ -739,8 +739,8 @@ static void store_pi_sec(struct module *mod, struct printk_index *start,
 
 #ifdef CONFIG_MODULES
 
-static int pi_module_notify(struct notifier_block *self,
-				     unsigned long val, void *data)
+static int pi_module_notify(struct notifier_block *self, unsigned long val,
+			    void *data)
 {
 	struct module *mod = data;
 
@@ -790,7 +790,7 @@ static int pi_show(struct seq_file *s, void *v)
 {
 	struct module *mod = s->file->f_inode->i_private;
 	struct pi_sec *ps = NULL;
-	struct printk_index *pf = NULL;
+	struct pi_object *pi = NULL;
 	int ret = 0;
 
 	mutex_lock(&pi_sec_table_mutex);
@@ -806,15 +806,15 @@ static int pi_show(struct seq_file *s, void *v)
 		goto out_unlock;
 	}
 
-	for (pf = ps->start; pf < ps->end; pf++) {
+	for (pi = ps->start; pi < ps->end; pi++) {
 		int level = LOGLEVEL_DEFAULT;
 		enum log_flags lflags = 0;
-		u16 prefix_len = parse_prefix(pf->fmt, &level, &lflags);
+		u16 prefix_len = parse_prefix(pi->fmt, &level, &lflags);
 
 		seq_printf(s, "<%d%s> %s %s:%d ",
-			   level, lflags & LOG_CONT ? ",c" : "", pf->func,
-			   pf->file, pf->line);
-		seq_escape_printf_format(s, pf->fmt + prefix_len);
+			   level, lflags & LOG_CONT ? ",c" : "", pi->func,
+			   pi->file, pi->line);
+		seq_escape_printf_format(s, pi->fmt + prefix_len);
 		seq_putc(s, '\n');
 	}
 
