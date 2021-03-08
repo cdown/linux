@@ -693,18 +693,23 @@ static void remove_printk_fmt_sec(struct module *mod)
 		return;
 
 	mutex_lock(&printk_fmts_mutex);
-
 	ps = find_printk_fmt_sec(mod);
-	if (!ps) {
-		mutex_unlock(&printk_fmts_mutex);
-		return;
-	}
-
-	hash_del(&ps->hnode);
-
 	mutex_unlock(&printk_fmts_mutex);
 
+	if (!ps)
+		return;
+
+	/*
+	 * The module notifier is synchronous, so this function isn't reentrant
+	 * with the same module. As such, it's safe to check without
+	 * printk_fmts_mutex.
+	 */
 	debugfs_remove(ps->file);
+
+	mutex_lock(&printk_fmts_mutex);
+	hash_del(&ps->hnode);
+	mutex_unlock(&printk_fmts_mutex);
+
 	kfree(ps);
 }
 
