@@ -302,15 +302,15 @@ extern int kptr_restrict;
 #endif
 
 #ifdef CONFIG_PRINTK_INDEX
-struct stored_printk_fmt {
+struct printk_index {
 	const char *function;
 	const char *filename;
 	const char *format;
 	unsigned int lineno;
 };
 
-extern struct stored_printk_fmt __start_printk_fmts[];
-extern struct stored_printk_fmt __stop_printk_fmts[];
+extern struct printk_index __start_printk_index[];
+extern struct printk_index __stop_printk_index[];
 
 #define printk_store_fmt(p_func, fmt, ...)				       \
 	({								       \
@@ -324,7 +324,7 @@ extern struct stored_printk_fmt __stop_printk_fmts[];
 			 * though this is already inside the
 			 * __builtin_constant_p guard.
 			 */						       \
-			static struct stored_printk_fmt _fmt __section(".printk_fmts") = { \
+			static struct printk_index _fmt __section(".printk_index") = { \
 				.format = __builtin_constant_p(fmt) ? fmt : NULL, \
 				.function = __func__,			       \
 				.filename = __FILE__,			       \

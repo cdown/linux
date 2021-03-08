@@ -310,14 +310,14 @@
 #endif
 
 #ifdef CONFIG_PRINTK_INDEX
-#define PRINTK_FMTS							\
-	.printk_fmts : AT(ADDR(.printk_fmts) - LOAD_OFFSET) {		\
-		__start_printk_fmts = .;				\
-		*(.printk_fmts)						\
-		__stop_printk_fmts = .;					\
+#define PRINTK_INDEX							\
+	.printk_index : AT(ADDR(.printk_index) - LOAD_OFFSET) {		\
+		__start_printk_index = .;				\
+		*(.printk_index)						\
+		__stop_printk_index = .;					\
 	}
 #else
-#define PRINTK_FMTS
+#define PRINTK_INDEX
 #endif
 
 #ifdef CONFIG_THERMAL
@@ -491,7 +491,7 @@
 									\
 	TRACEDATA							\
 									\
-	PRINTK_FMTS							\
+	PRINTK_INDEX							\
 									\
 	/* Kernel symbol table: Normal symbols */			\
 	__ksymtab         : AT(ADDR(__ksymtab) - LOAD_OFFSET) {		\
