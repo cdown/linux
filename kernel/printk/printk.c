@@ -668,28 +668,6 @@ static struct printk_fmt_sec *find_printk_fmt_sec(struct module *mod)
 	return NULL;
 }
 
-static void store_printk_fmt_sec(struct module *mod, const char **start,
-				 const char **end)
-{
-	struct printk_fmt_sec *ps = NULL;
-
-	ps = kmalloc(sizeof(struct printk_fmt_sec), GFP_KERNEL);
-	if (!ps)
-		return;
-
-	ps->mod = mod;
-	ps->start = start;
-	ps->end = end;
-
-	mutex_lock(&printk_fmts_mutex);
-	hash_add(printk_fmts_mod_sections, &ps->hnode, (unsigned long)mod);
-	mutex_unlock(&printk_fmts_mutex);
-
-	ps->file = debugfs_create_file(ps_get_module_name(ps), 0444,
-				       dfs_formats, mod, &dfs_formats_fops);
-}
-
-#ifdef CONFIG_MODULES
 static void remove_printk_fmt_sec(struct module *mod)
 {
 	struct printk_fmt_sec *ps = NULL;
@@ -712,6 +690,32 @@ static void remove_printk_fmt_sec(struct module *mod)
 	debugfs_remove(ps->file);
 	kfree(ps);
 }
+
+static void store_printk_fmt_sec(struct module *mod, const char **start,
+				 const char **end)
+{
+	struct printk_fmt_sec *ps = NULL;
+
+	ps = kmalloc(sizeof(struct printk_fmt_sec), GFP_KERNEL);
+	if (!ps)
+		return;
+
+	ps->mod = mod;
+	ps->start = start;
+	ps->end = end;
+
+	mutex_lock(&printk_fmts_mutex);
+	hash_add(printk_fmts_mod_sections, &ps->hnode, (unsigned long)mod);
+	mutex_unlock(&printk_fmts_mutex);
+
+	ps->file = debugfs_create_file(ps_get_module_name(ps), 0444,
+				       dfs_formats, mod, &dfs_formats_fops);
+
+	if (IS_ERR(ps->file))
+		remove_printk_fmt_sec(ps->mod);
+}
+
+#ifdef CONFIG_MODULES
 
 static int module_printk_fmts_notify(struct notifier_block *self,
 				     unsigned long val, void *data)
