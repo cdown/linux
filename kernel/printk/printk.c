@@ -626,7 +626,7 @@ out:
  */
 
 /**
- * struct pi_object - printk index section metadata
+ * struct pi_sec - printk index section metadata
  *
  * @hnode: The node for the hash table
  * @mod:   The module that these printk formats belong to
@@ -634,7 +634,7 @@ out:
  * @start: Section start boundary
  * @end:   Section end boundary
  *
- * Allocated and populated by store_pi_object.
+ * Allocated and populated by store_pi_sec.
  *
  * @mod is NULL if the printk formats in question are built in to vmlinux
  * itself.
@@ -642,7 +642,7 @@ out:
  * @file may be an ERR_PTR value if the file or one of its ancestors was not
  * successfully created.
  */
-struct pi_object {
+struct pi_sec {
 	struct hlist_node hnode;
 	struct module *mod;
 	struct dentry *file;
@@ -655,15 +655,15 @@ struct dentry *dfs_formats;
 
 /*
  * Stores .printk_fmt section boundaries for vmlinux and all loaded modules.
- * Add entries with store_pi_object, remove entries with
- * remove_pi_object.
+ * Add entries with store_pi_sec, remove entries with
+ * remove_pi_sec.
  */
 static DEFINE_HASHTABLE(pi_sec_table, 8);
 
 /* Protects pi_sec_table */
 static DEFINE_MUTEX(pi_sec_table_mutex);
 
-static const char *pi_get_module_name(const struct pi_object *ps);
+static const char *pi_get_module_name(const struct pi_sec *ps);
 static int pi_open(struct inode *inode, struct file *file);
 
 static const struct file_operations dfs_formats_fops = {
@@ -673,9 +673,9 @@ static const struct file_operations dfs_formats_fops = {
 	.release = single_release,
 };
 
-static struct pi_object *find_pi_object(struct module *mod)
+static struct pi_sec *find_pi_sec(struct module *mod)
 {
-	struct pi_object *ps = NULL;
+	struct pi_sec *ps = NULL;
 
 	hash_for_each_possible(pi_sec_table, ps, hnode,
 			       (unsigned long)mod)
@@ -685,15 +685,15 @@ static struct pi_object *find_pi_object(struct module *mod)
 	return NULL;
 }
 
-static void remove_pi_object(struct module *mod)
+static void remove_pi_sec(struct module *mod)
 {
-	struct pi_object *ps = NULL;
+	struct pi_sec *ps = NULL;
 
 	if (WARN_ON_ONCE(!mod))
 		return;
 
 	mutex_lock(&pi_sec_table_mutex);
-	ps = find_pi_object(mod);
+	ps = find_pi_sec(mod);
 	mutex_unlock(&pi_sec_table_mutex);
 
 	if (!ps)
@@ -713,12 +713,12 @@ static void remove_pi_object(struct module *mod)
 	kfree(ps);
 }
 
-static void store_pi_object(struct module *mod, struct printk_index *start,
+static void store_pi_sec(struct module *mod, struct printk_index *start,
 				 struct printk_index *end)
 {
-	struct pi_object *ps = NULL;
+	struct pi_sec *ps = NULL;
 
-	ps = kmalloc(sizeof(struct pi_object), GFP_KERNEL);
+	ps = kmalloc(sizeof(struct pi_sec), GFP_KERNEL);
 	if (!ps)
 		return;
 
@@ -734,7 +734,7 @@ static void store_pi_object(struct module *mod, struct printk_index *start,
 				       dfs_formats, mod, &dfs_formats_fops);
 
 	if (IS_ERR(ps->file))
-		remove_pi_object(ps->mod);
+		remove_pi_sec(ps->mod);
 }
 
 #ifdef CONFIG_MODULES
@@ -747,13 +747,13 @@ static int pi_module_notify(struct notifier_block *self,
 	if (mod->printk_index_size) {
 		switch (val) {
 		case MODULE_STATE_COMING:
-			store_pi_object(mod, mod->printk_index_start,
+			store_pi_sec(mod, mod->printk_index_start,
 					     mod->printk_index_start +
 						     mod->printk_index_size);
 			break;
 
 		case MODULE_STATE_GOING:
-			remove_pi_object(mod);
+			remove_pi_sec(mod);
 			break;
 		}
 	}
@@ -761,7 +761,7 @@ static int pi_module_notify(struct notifier_block *self,
 	return NOTIFY_OK;
 }
 
-static const char *pi_get_module_name(const struct pi_object *ps)
+static const char *pi_get_module_name(const struct pi_sec *ps)
 {
 	return ps->mod ? ps->mod->name : "vmlinux";
 }
@@ -778,7 +778,7 @@ static int __init pi_init(void)
 core_initcall(pi_init);
 
 #else /* !CONFIG_MODULES */
-static const char *pi_get_module_name(const struct pi_object *ps)
+static const char *pi_get_module_name(const struct pi_sec *ps)
 {
 	return "vmlinux";
 }
@@ -789,7 +789,7 @@ static u16 parse_prefix(const char *text, int *level, enum log_flags *lflags);
 static int pi_show(struct seq_file *s, void *v)
 {
 	struct module *mod = s->file->f_inode->i_private;
-	struct pi_object *ps = NULL;
+	struct pi_sec *ps = NULL;
 	struct printk_index *pf = NULL;
 	int ret = 0;
 
@@ -800,7 +800,7 @@ static int pi_show(struct seq_file *s, void *v)
 	 * _show, so we need to eyeball the entries under pi_sec_table_mutex
 	 * again.
 	 */
-	ps = find_pi_object(mod);
+	ps = find_pi_sec(mod);
 	if (unlikely(!ps)) {
 		ret = -ENOENT;
 		goto out_unlock;
@@ -834,7 +834,7 @@ static int __init init_printk_fmts(void)
 	struct dentry *dfs_root = debugfs_create_dir("printk", NULL);
 
 	dfs_formats = debugfs_create_dir("formats", dfs_root);
-	store_pi_object(NULL, __start_printk_index, __stop_printk_index);
+	store_pi_sec(NULL, __start_printk_index, __stop_printk_index);
 
 	return 0;
 }
