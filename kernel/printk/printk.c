@@ -809,12 +809,12 @@ static int pi_show(struct seq_file *s, void *v)
 	for (pf = ps->start; pf < ps->end; pf++) {
 		int level = LOGLEVEL_DEFAULT;
 		enum log_flags lflags = 0;
-		u16 prefix_len = parse_prefix(pf->format, &level, &lflags);
+		u16 prefix_len = parse_prefix(pf->fmt, &level, &lflags);
 
 		seq_printf(s, "<%d%s> %s %s:%d ",
-			   level, lflags & LOG_CONT ? ",c" : "", pf->function,
-			   pf->filename, pf->lineno);
-		seq_escape_printf_format(s, pf->format + prefix_len);
+			   level, lflags & LOG_CONT ? ",c" : "", pf->func,
+			   pf->file, pf->line);
+		seq_escape_printf_format(s, pf->fmt + prefix_len);
 		seq_putc(s, '\n');
 	}
 

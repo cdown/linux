@@ -303,20 +303,20 @@ extern int kptr_restrict;
 
 #ifdef CONFIG_PRINTK_INDEX
 struct printk_index {
-	const char *function;
-	const char *filename;
-	const char *format;
-	unsigned int lineno;
+	const char *fmt;
+	const char *func;
+	const char *file;
+	unsigned int line;
 };
 
 extern struct printk_index __start_printk_index[];
 extern struct printk_index __stop_printk_index[];
 
-#define printk_store_fmt(p_func, fmt, ...)				       \
+#define printk_store_fmt(_p_func, _fmt, ...)				       \
 	({								       \
-		int _printk_ret;					       \
+		int _p_ret;						       \
 									       \
-		if (__builtin_constant_p(fmt)) {			       \
+		if (__builtin_constant_p(_fmt)) {			       \
 			/*
 			 * The compiler may not be able to eliminate this, so
 			 * we need to make sure that it doesn't see any
@@ -324,17 +324,18 @@ extern struct printk_index __stop_printk_index[];
 			 * though this is already inside the
 			 * __builtin_constant_p guard.
 			 */						       \
-			static struct printk_index _fmt __section(".printk_index") = { \
-				.format = __builtin_constant_p(fmt) ? fmt : NULL, \
-				.function = __func__,			       \
-				.filename = __FILE__,			       \
-				.lineno = __LINE__,			       \
+			static struct printk_index _pi			       \
+			__section(".printk_index") = {			       \
+				.fmt = __builtin_constant_p(_fmt) ? (_fmt) : NULL, \
+				.func = __func__,			       \
+				.file = __FILE__,			       \
+				.line = __LINE__,			       \
 			};						       \
-			_printk_ret = p_func(_fmt.format, ##__VA_ARGS__);	       \
+			_p_ret = _p_func(_pi.fmt, ##__VA_ARGS__);	       \
 		} else							       \
-			_printk_ret = p_func(fmt, ##__VA_ARGS__);		       \
+			_p_ret = _p_func(_fmt, ##__VA_ARGS__);		       \
 									       \
-		_printk_ret;						       \
+		_p_ret;							       \
 	})
 
 #define printk(fmt, ...) printk_store_fmt(_printk, fmt, ##__VA_ARGS__)
