@@ -646,8 +646,8 @@ struct printk_fmt_sec {
 	struct hlist_node hnode;
 	struct module *mod;
 	struct dentry *file;
-	const char **start;
-	const char **end;
+	struct stored_printk_fmt *start;
+	struct stored_printk_fmt *end;
 };
 
 /* The base dir for module formats, typically debugfs/printk/formats/ */
@@ -713,8 +713,8 @@ static void remove_printk_fmt_sec(struct module *mod)
 	kfree(ps);
 }
 
-static void store_printk_fmt_sec(struct module *mod, const char **start,
-				 const char **end)
+static void store_printk_fmt_sec(struct module *mod, struct stored_printk_fmt *start,
+				 struct stored_printk_fmt *end)
 {
 	struct printk_fmt_sec *ps = NULL;
 
@@ -790,7 +790,7 @@ static int debugfs_pf_show(struct seq_file *s, void *v)
 {
 	struct module *mod = s->file->f_inode->i_private;
 	struct printk_fmt_sec *ps = NULL;
-	const char **fptr = NULL;
+	struct stored_printk_fmt *pf = NULL;
 	int ret = 0;
 
 	mutex_lock(&printk_fmts_mutex);
@@ -806,13 +806,15 @@ static int debugfs_pf_show(struct seq_file *s, void *v)
 		goto out_unlock;
 	}
 
-	for (fptr = ps->start; fptr < ps->end; fptr++) {
+	for (pf = ps->start; pf < ps->end; pf++) {
 		int level = LOGLEVEL_DEFAULT;
 		enum log_flags lflags = 0;
-		u16 prefix_len = parse_prefix(*fptr, &level, &lflags);
+		u16 prefix_len = parse_prefix(pf->format, &level, &lflags);
 
-		seq_printf(s, "<%d%s> ", level, lflags & LOG_CONT ? ",c" : "");
-		seq_escape_printf_format(s, *fptr + prefix_len);
+		seq_printf(s, "<%d%s> %s %s:%d ",
+			   level, lflags & LOG_CONT ? ",c" : "", pf->function,
+			   pf->filename, pf->lineno);
+		seq_escape_printf_format(s, pf->format + prefix_len);
 		seq_putc(s, '\n');
 	}
 

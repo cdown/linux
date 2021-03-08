@@ -284,11 +284,6 @@ static inline void printk_safe_flush_on_panic(void)
 
 extern int kptr_restrict;
 
-#ifdef CONFIG_PRINTK_INDEX
-extern const char *__start_printk_fmts[];
-extern const char *__stop_printk_fmts[];
-#endif
-
 /**
  * pr_fmt - used by the pr_*() macros to generate the printk format string
  * @fmt: format string passed from a pr_*() macro
@@ -307,7 +302,17 @@ extern const char *__stop_printk_fmts[];
 #endif
 
 #ifdef CONFIG_PRINTK_INDEX
-#define printk_store_fmt(func, fmt, ...)				       \
+struct stored_printk_fmt {
+	const char *function;
+	const char *filename;
+	const char *format;
+	unsigned int lineno;
+};
+
+extern struct stored_printk_fmt __start_printk_fmts[];
+extern struct stored_printk_fmt __stop_printk_fmts[];
+
+#define printk_store_fmt(p_func, fmt, ...)				       \
 	({								       \
 		int _printk_ret;					       \
 									       \
@@ -319,11 +324,15 @@ extern const char *__stop_printk_fmts[];
 			 * though this is already inside the
 			 * __builtin_constant_p guard.
 			 */						       \
-			static const char *_fmt __section(".printk_fmts") =    \
-				__builtin_constant_p(fmt) ? fmt : NULL;	       \
-			_printk_ret = func(_fmt, ##__VA_ARGS__);	       \
+			static struct stored_printk_fmt _fmt __section(".printk_fmts") = { \
+				.format = __builtin_constant_p(fmt) ? fmt : NULL, \
+				.function = __func__,			       \
+				.filename = __FILE__,			       \
+				.lineno = __LINE__,			       \
+			};						       \
+			_printk_ret = p_func(_fmt.format, ##__VA_ARGS__);	       \
 		} else							       \
-			_printk_ret = func(fmt, ##__VA_ARGS__);		       \
+			_printk_ret = p_func(fmt, ##__VA_ARGS__);		       \
 									       \
 		_printk_ret;						       \
 	})

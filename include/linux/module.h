@@ -518,7 +518,7 @@ struct module {
 
 #ifdef CONFIG_PRINTK_INDEX
 	unsigned int printk_fmts_sec_size;
-	const char **printk_fmts_start;
+	struct stored_printk_fmt *printk_fmts_start;
 #endif
 
 #ifdef CONFIG_MODULE_UNLOAD
