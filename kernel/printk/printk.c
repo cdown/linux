@@ -625,6 +625,23 @@ out:
  * debugfs/printk/formats/ - userspace indexing of printk formats
  */
 
+/**
+ * struct printk_fmt_sec - printk format section metadata
+ *
+ * @hnode: The node for the hash table
+ * @mod:   The module that these printk formats belong to
+ * @file:  The debugfs file where userspace can index these printk formats
+ * @start: Section start boundary
+ * @end:   Section end boundary
+ *
+ * Allocated and populated by store_printk_fmt_sec.
+ *
+ * @mod is NULL if the printk formats in question are built in to vmlinux
+ * itself.
+ *
+ * @file may be an ERR_PTR value if the file or one of its ancestors was not
+ * successfully created.
+ */
 struct printk_fmt_sec {
 	struct hlist_node hnode;
 	struct module *mod;
