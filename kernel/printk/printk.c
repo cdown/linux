@@ -651,9 +651,15 @@ struct dentry *dfs_formats;
 static void *pi_next(struct seq_file *s, void *v, loff_t *pos)
 {
 	struct pi_sec *ps = s->file->f_inode->i_private;
-	struct pi_object *pi = ps->start + *pos;
+	struct pi_object *pi = NULL;
+	loff_t idx = *pos - 1;
 
 	++*pos;
+
+	if (idx == -1)
+		return SEQ_START_TOKEN;
+
+	pi = ps->start + idx;
 
 	return pi < ps->end ? pi : NULL;
 
@@ -671,11 +677,18 @@ static int pi_show(struct seq_file *s, void *v)
 	struct pi_object *pi = v;
 	int level = LOGLEVEL_DEFAULT;
 	enum log_flags lflags = 0;
-	u16 prefix_len = parse_prefix(pi->fmt, &level, &lflags);
+	u16 prefix_len;
 
-	seq_printf(s, "<%d%s> %s %s:%d ",
-			level, lflags & LOG_CONT ? ",c" : "", pi->func,
-			pi->file, pi->line);
+	if (v == SEQ_START_TOKEN) {
+		seq_puts(s,
+			 "# <level,flags> filename:line function \"format\"\n");
+		return 0;
+	}
+
+	prefix_len = parse_prefix(pi->fmt, &level, &lflags);
+	seq_printf(s, "<%d%s> %s:%d %s ",
+			level, lflags & LOG_CONT ? ",c" : "", pi->file,
+			pi->line, pi->func);
 	seq_escape_printf_format(s, pi->fmt + prefix_len);
 	seq_putc(s, '\n');
 
