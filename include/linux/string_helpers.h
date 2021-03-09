@@ -52,6 +52,7 @@ static inline int string_unescape_any_inplace(char *buf)
 #define ESCAPE_ANY_NP		(ESCAPE_ANY | ESCAPE_NP)
 #define ESCAPE_HEX		0x20
 #define ESCAPE_QUOTE		0x40
+#define ESCAPE_PRINTF		(ESCAPE_ANY_NP | ESCAPE_QUOTE)
 
 int string_escape_mem(const char *src, size_t isz, char *dst, size_t osz,
 		unsigned int flags, const char *only);

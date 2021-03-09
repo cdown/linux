@@ -392,9 +392,7 @@ void seq_escape_printf_format(struct seq_file *m, const char *s)
 	size_t size = seq_get_buf(m, &buf);
 	int ret;
 
-	ret = string_escape_str(s, buf, size,
-				ESCAPE_SPACE | ESCAPE_SPECIAL | ESCAPE_QUOTE,
-				NULL);
+	ret = string_escape_str(s, buf, size, ESCAPE_PRINTF, NULL);
 	seq_commit(m, ret < size ? ret : -1);
 }
 EXPORT_SYMBOL(seq_escape_printf_format);

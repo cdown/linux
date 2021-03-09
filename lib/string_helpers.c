@@ -506,7 +506,10 @@ static bool escape_quote(unsigned char c, char **dst, char *end)
  *	%ESCAPE_HEX:
  *		'\xHH' - byte with hexadecimal value HH (2 digits)
  *	%ESCAPE_QUOTE:
- *		'\"' - ASCII quotation mark
+ *		'"' - ASCII quotation mark
+ *	%ESCAPE_PRINTF:
+ *		anything one would usually have to quote inside "" to printf,
+ *		ie. ESCAPE_SPACE + ESCAPE_SPECIAL + ESCAPE_NP + ESCAPE_QUOTE
  *
  * Return:
  * The total size of the escaped output that would be generated for
@@ -535,7 +538,8 @@ int string_escape_mem(const char *src, size_t isz, char *dst, size_t osz,
 		 * In these cases we just pass through a character to the
 		 * output buffer.
 		 */
-		if ((flags & ESCAPE_NP && isprint(c)) ||
+		if ((flags & ESCAPE_NP && isprint(c) &&
+		    (!(flags & ESCAPE_QUOTE) || c != '\"')) ||
 		    (is_dict && !strchr(only, c))) {
 			/* do nothing */
 		} else {
@@ -543,6 +547,9 @@ int string_escape_mem(const char *src, size_t isz, char *dst, size_t osz,
 				continue;
 
 			if (flags & ESCAPE_SPECIAL && escape_special(c, &p, end))
+				continue;
+
+			if (flags & ESCAPE_QUOTE && escape_quote(c, &p, end))
 				continue;
 
 			if (flags & ESCAPE_NULL && escape_null(c, &p, end))
@@ -553,9 +560,6 @@ int string_escape_mem(const char *src, size_t isz, char *dst, size_t osz,
 				continue;
 
 			if (flags & ESCAPE_HEX && escape_hex(c, &p, end))
-				continue;
-
-			if (flags & ESCAPE_QUOTE && escape_quote(c, &p, end))
 				continue;
 		}
 
