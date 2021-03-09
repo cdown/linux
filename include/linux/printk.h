@@ -301,7 +301,12 @@ extern int kptr_restrict;
 #define pr_fmt(fmt) fmt
 #endif
 
+struct module;
+
 #ifdef CONFIG_PRINTK_INDEX
+void pi_sec_store(struct module *mod);
+void pi_sec_remove(struct module *mod);
+
 struct pi_object {
 	const char *fmt;
 	const char *func;
@@ -342,6 +347,14 @@ extern struct pi_object __stop_printk_index[];
 #define printk_deferred(fmt, ...)					       \
 	printk_store_fmt(_printk_deferred, fmt, ##__VA_ARGS__)
 #else /* !CONFIG_PRINTK_INDEX */
+static inline void pi_sec_store(struct module *mod)
+{
+}
+
+static inline void pi_sec_remove(struct module *mod)
+{
+}
+
 #define printk(...) _printk(__VA_ARGS__)
 #define printk_deferred(...) _printk_deferred(__VA_ARGS__)
 #endif /* CONFIG_PRINTK_INDEX */

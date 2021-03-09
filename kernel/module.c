@@ -1064,6 +1064,7 @@ SYSCALL_DEFINE2(delete_module, const char __user *, name_user,
 	blocking_notifier_call_chain(&module_notify_list,
 				     MODULE_STATE_GOING, mod);
 	klp_module_going(mod);
+	pi_sec_remove(mod);
 	ftrace_release_mod(mod);
 
 	async_synchronize_full();
@@ -3865,6 +3866,7 @@ fail:
 	blocking_notifier_call_chain(&module_notify_list,
 				     MODULE_STATE_GOING, mod);
 	klp_module_going(mod);
+	pi_sec_remove(mod);
 	ftrace_release_mod(mod);
 	free_module(mod);
 	wake_up_all(&module_wq);
@@ -3959,11 +3961,15 @@ static int prepare_coming_module(struct module *mod)
 	if (err)
 		return err;
 
+	pi_sec_store(mod);
+
 	err = blocking_notifier_call_chain_robust(&module_notify_list,
 			MODULE_STATE_COMING, MODULE_STATE_GOING, mod);
 	err = notifier_to_errno(err);
-	if (err)
+	if (err) {
 		klp_module_going(mod);
+		pi_sec_remove(mod);
+	}
 
 	return err;
 }
@@ -4177,6 +4183,7 @@ static int load_module(struct load_info *info, const char __user *uargs,
 	blocking_notifier_call_chain(&module_notify_list,
 				     MODULE_STATE_GOING, mod);
 	klp_module_going(mod);
+	pi_sec_remove(mod);
  bug_cleanup:
 	mod->state = MODULE_STATE_GOING;
 	/* module_bug_cleanup needs module_mutex protection */
