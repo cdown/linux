@@ -143,6 +143,9 @@ static const struct test_string_2 escape0[] __initconst = {{
 		.out = "\\\\h\\\\\"\\a\\e\\\\",
 		.flags = ESCAPE_SPECIAL,
 	},{
+		.out = "\\\\h\\\\\\\"\\a\\e\\\\",
+		.flags = ESCAPE_SPECIAL | ESCAPE_QUOTE,
+	},{
 		.out = "\\\\\\150\\\\\\042\\a\\e\\\\",
 		.flags = ESCAPE_SPECIAL | ESCAPE_OCTAL,
 	},{

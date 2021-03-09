@@ -436,6 +436,24 @@ static bool escape_hex(unsigned char c, char **dst, char *end)
 	return true;
 }
 
+static bool escape_quote(unsigned char c, char **dst, char *end)
+{
+	char *out = *dst;
+
+	if (c != '"')
+		return false;
+
+	if (out < end)
+		*out = '\\';
+	++out;
+	if (out < end)
+		*out = '"';
+	++out;
+
+	*dst = out;
+	return true;
+}
+
 /**
  * string_escape_mem - quote characters in the given memory buffer
  * @src:	source buffer (unescaped)
@@ -487,6 +505,8 @@ static bool escape_hex(unsigned char c, char **dst, char *end)
  *		all previous together
  *	%ESCAPE_HEX:
  *		'\xHH' - byte with hexadecimal value HH (2 digits)
+ *	%ESCAPE_QUOTE:
+ *		'\"' - ASCII quotation mark
  *
  * Return:
  * The total size of the escaped output that would be generated for
@@ -533,6 +553,9 @@ int string_escape_mem(const char *src, size_t isz, char *dst, size_t osz,
 				continue;
 
 			if (flags & ESCAPE_HEX && escape_hex(c, &p, end))
+				continue;
+
+			if (flags & ESCAPE_QUOTE && escape_quote(c, &p, end))
 				continue;
 		}
 
