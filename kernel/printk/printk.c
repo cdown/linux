@@ -648,13 +648,62 @@ struct pi_sec {
 /* The base dir for module formats, typically debugfs/printk/formats/ */
 struct dentry *dfs_formats;
 
-static int pi_open(struct inode *inode, struct file *file);
+static void *pi_next(struct seq_file *s, void *v, loff_t *pos)
+{
+	struct pi_sec *ps = s->file->f_inode->i_private;
+	struct pi_object *pi = ps->start + *pos;
 
-static const struct file_operations dfs_formats_fops = {
+	++*pos;
+
+	return pi < ps->end ? pi : NULL;
+
+}
+
+static void *pi_start(struct seq_file *s, loff_t *pos)
+{
+	return pi_next(s, NULL, pos);
+}
+
+static u16 parse_prefix(const char *text, int *level, enum log_flags *lflags);
+
+static int pi_show(struct seq_file *s, void *v)
+{
+	struct pi_object *pi = v;
+	int level = LOGLEVEL_DEFAULT;
+	enum log_flags lflags = 0;
+	u16 prefix_len = parse_prefix(pi->fmt, &level, &lflags);
+
+	seq_printf(s, "<%d%s> %s %s:%d ",
+			level, lflags & LOG_CONT ? ",c" : "", pi->func,
+			pi->file, pi->line);
+	seq_escape_printf_format(s, pi->fmt + prefix_len);
+	seq_putc(s, '\n');
+
+	return 0;
+}
+
+static void pi_stop(struct seq_file *p, void *v)
+{
+}
+
+static const struct seq_operations dfs_formats_seq_ops = {
+	.start = pi_start,
+	.next  = pi_next,
+	.show  = pi_show,
+	.stop  = pi_stop,
+};
+
+
+static int pi_open(struct inode *inode, struct file *file)
+{
+	return seq_open(file, &dfs_formats_seq_ops);
+}
+
+static struct file_operations dfs_formats_fops = {
 	.open    = pi_open,
 	.read    = seq_read,
 	.llseek  = seq_lseek,
-	.release = single_release,
+	.release = seq_release
 };
 
 static const char *pi_get_module_name(struct module *mod)
@@ -707,34 +756,6 @@ void pi_sec_store(struct module *mod)
 	 * vmlinux's pi_sec is only accessible as private data on the inode,
 	 * since we never have to free it.
 	 */
-}
-
-static u16 parse_prefix(const char *text, int *level, enum log_flags *lflags);
-
-static int pi_show(struct seq_file *s, void *v)
-{
-	struct pi_sec *ps = s->file->f_inode->i_private;
-	struct pi_object *pi = NULL;
-
-	for (pi = ps->start; pi < ps->end; pi++) {
-		int level = LOGLEVEL_DEFAULT;
-		enum log_flags lflags = 0;
-		u16 prefix_len = parse_prefix(pi->fmt, &level, &lflags);
-
-		seq_printf(s, "<%d%s> %s %s:%d ",
-			   level, lflags & LOG_CONT ? ",c" : "", pi->func,
-			   pi->file, pi->line);
-		seq_escape_printf_format(s, pi->fmt + prefix_len);
-		seq_putc(s, '\n');
-	}
-
-	return 0;
-}
-
-static int pi_open(struct inode *inode, struct file *file)
-{
-	/* TODO: get rid of size altogether */
-	return single_open_size(file, pi_show, NULL, 1 << 20);
 }
 
 static int __init init_printk_fmts(void)
