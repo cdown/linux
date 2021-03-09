@@ -378,7 +378,7 @@ EXPORT_SYMBOL(seq_escape);
 
 /**
  *	seq_escape_printf_format - print string into buffer, escaping
- *		characters that are escaped in printf format,
+ *		characters that are escaped in printf format (including '"')
  *	@m:	target buffer
  *	@s:	string
  *
@@ -392,7 +392,8 @@ void seq_escape_printf_format(struct seq_file *m, const char *s)
 	size_t size = seq_get_buf(m, &buf);
 	int ret;
 
-	ret = string_escape_str(s, buf, size, ESCAPE_SPACE | ESCAPE_SPECIAL, NULL);
+	ret = string_escape_str(s, buf, size, ESCAPE_SPACE | ESCAPE_SPECIAL,
+				"\"");
 	seq_commit(m, ret < size ? ret : -1);
 }
 EXPORT_SYMBOL(seq_escape_printf_format);

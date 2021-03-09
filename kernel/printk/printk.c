@@ -686,11 +686,11 @@ static int pi_show(struct seq_file *s, void *v)
 	}
 
 	prefix_len = parse_prefix(pi->fmt, &level, &lflags);
-	seq_printf(s, "<%d%s> %s:%d %s ",
+	seq_printf(s, "<%d%s> %s:%d %s \"",
 			level, lflags & LOG_CONT ? ",c" : "", pi->file,
 			pi->line, pi->func);
 	seq_escape_printf_format(s, pi->fmt + prefix_len);
-	seq_putc(s, '\n');
+	seq_printf(s, "\"\n");
 
 	return 0;
 }
