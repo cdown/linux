@@ -164,6 +164,11 @@ static inline void printk_nmi_direct_exit(void) { }
 struct dev_printk_info;
 
 #ifdef CONFIG_PRINTK
+enum log_flags {
+	LOG_NEWLINE	= 2,	/* text ended with a newline */
+	LOG_CONT	= 8,	/* text is a fragment of a continuation line */
+};
+
 asmlinkage __printf(4, 0)
 int vprintk_emit(int facility, int level,
 		 const struct dev_printk_info *dev_info,
@@ -206,6 +211,7 @@ void __init setup_log_buf(int early);
 __printf(1, 2) void dump_stack_set_arch_desc(const char *fmt, ...);
 void dump_stack_print_info(const char *log_lvl);
 void show_regs_print_info(const char *log_lvl);
+u16 parse_prefix(const char *text, int *level, enum log_flags *lflags);
 extern asmlinkage void dump_stack(void) __cold;
 extern void printk_safe_flush(void);
 extern void printk_safe_flush_on_panic(void);
@@ -304,8 +310,8 @@ extern int kptr_restrict;
 struct module;
 
 #ifdef CONFIG_PRINTK_INDEX
-void pi_sec_store(struct module *mod);
-void pi_sec_remove(struct module *mod);
+extern void pi_sec_store(struct module *mod);
+extern void pi_sec_remove(struct module *mod);
 
 struct pi_object {
 	const char *fmt;
