@@ -62,20 +62,19 @@ static void *pi_next(struct seq_file *s, void *v, loff_t *pos)
 {
 	const struct pi_sec *ps = s->file->f_inode->i_private;
 	struct pi_object *pi = NULL;
-	loff_t idx = *pos - 1;
 
 	++*pos;
 
-	if (idx == -1)
-		return SEQ_START_TOKEN;
-
-	pi = ps->start + idx;
+	pi = ps->start + *pos;
 
 	return pi < ps->end ? pi : NULL;
 }
 
 static void *pi_start(struct seq_file *s, loff_t *pos)
 {
+	if (*pos == 0)
+		return SEQ_START_TOKEN;
+
 	return pi_next(s, NULL, pos);
 }
 
