@@ -50,6 +50,12 @@ struct prb_data_blk_lpos {
 	unsigned long	next;
 };
 
+/* Flags for a single printk record. */
+enum printk_info_flags {
+	LOG_NEWLINE	= 2,	/* text ended with a newline */
+	LOG_CONT	= 8,	/* text is a fragment of a continuation line */
+};
+
 /*
  * A descriptor: the complete meta-data for a record.
  *
