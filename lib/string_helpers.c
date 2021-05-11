@@ -361,6 +361,9 @@ static bool escape_special(unsigned char c, char **dst, char *end)
 	case '\e':
 		to = 'e';
 		break;
+	case '"':
+		to = '"';
+		break;
 	default:
 		return false;
 	}
@@ -552,6 +555,7 @@ int string_escape_mem(const char *src, size_t isz, char *dst, size_t osz,
 			continue;
 
 		if (!(is_append && in_dict) && isprint(c) &&
+		    (!(flags & ESCAPE_SPECIAL) || c != '"') &&
 		    flags & ESCAPE_NP && escape_passthrough(c, &p, end))
 			continue;
 
