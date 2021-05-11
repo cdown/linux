@@ -361,6 +361,9 @@ static bool escape_special(unsigned char c, char **dst, char *end)
 	case '\e':
 		to = 'e';
 		break;
+	case '"':
+		to = '"';
+		break;
 	default:
 		return false;
 	}
@@ -507,7 +510,8 @@ int string_escape_mem(const char *src, size_t isz, char *dst, size_t osz,
 		/*
 		 * Apply rules in the following sequence:
 		 *	- the character is printable, when @flags has
-		 *	  %ESCAPE_NP bit set
+		 *	  %ESCAPE_NP bit set (except for %ESCAPE_SPECIAL, which
+		 *	  also requires '"')
 		 *	- the @only string is supplied and does not contain a
 		 *	  character under question
 		 *	- the character doesn't fall into a class of symbols
@@ -515,7 +519,8 @@ int string_escape_mem(const char *src, size_t isz, char *dst, size_t osz,
 		 * In these cases we just pass through a character to the
 		 * output buffer.
 		 */
-		if ((flags & ESCAPE_NP && isprint(c)) ||
+		if ((flags & ESCAPE_NP && isprint(c) &&
+		    (!(flags & ESCAPE_SPECIAL) || c != '"')) ||
 		    (is_dict && !strchr(only, c))) {
 			/* do nothing */
 		} else {
