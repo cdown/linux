@@ -4547,8 +4547,12 @@ static void __dev_printk(const char *level, const struct device *dev,
 		printk("%s(NULL device *): %pV", level, vaf);
 }
 
-void dev_printk(const char *level, const struct device *dev,
-		const char *fmt, ...)
+/* %s %s covers both the NULL and non-NULL device cases */
+#define dev_printk(level, _dev, fmt, ...) \
+	printk_index_subsys_emit("%s %s: ", fmt, "", level)
+
+void (dev_printk)(const char *level, const struct device *dev,
+		  const char *fmt, ...)
 {
 	struct va_format vaf;
 	va_list args;

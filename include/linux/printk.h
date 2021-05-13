@@ -313,10 +313,20 @@ struct pi_entry {
 	const char *func;
 	const char *file;
 	unsigned int line;
+
+	/*
+	 * While printk and pr_* have the level stored in the string at compile
+	 * time, some subsystems dynamically add it at runtime through the
+	 * format string. For these dynamic cases, we allow the subsystem to
+	 * tell us the level at compile time.
+	 *
+	 * KERN_DEFAULT indicates that the level, if any, is stored in fmt.
+	 */
+	const char *level;
 };
 
-#define __printk_index_emit(_fmt, ...)					       \
-	do {								       \
+#define __printk_index_emit(_fmt, _level, ...)				       \
+	({								       \
 		if (__builtin_constant_p(_fmt)) {			       \
 			/*
 			 * The compiler may not be able to eliminate this, so
@@ -331,9 +341,27 @@ struct pi_entry {
 				.func = __func__,			       \
 				.file = __FILE__,			       \
 				.line = __LINE__,			       \
+				.level = _level,			       \
 			};						       \
 		}							       \
-	} while (0)
+	})
+
+/*
+ * Some subsystems have their own custom printk that applies a va_format to a
+ * generic format, for example, to include a device number or other metadata
+ * alongside the format supplied by the caller.
+ *
+ * In order to store these in the way they would be emitted by the printk
+ * infrastructure, the subsystem provides us with the start, fixed string, and
+ * any subsequent text in the format string.
+ *
+ * pre and post must be known at compile time. If fmt is not known at compile
+ * time, no index entry will be made.
+ */
+#define printk_index_subsys_emit(pre, fmt, post, level)			       \
+	if (__builtin_constant_p(fmt))					       \
+		__printk_index_emit(pre fmt post, level)
+
 #else /* !CONFIG_PRINTK_INDEX */
 static inline void pi_create_file(struct module *mod)
 {
@@ -348,7 +376,7 @@ static inline void pi_remove_file(struct module *mod)
 
 #define printk_index_wrap(_p_func, _fmt, ...)				       \
 	({								       \
-		__printk_index_emit(_fmt);				       \
+		__printk_index_emit(_fmt, KERN_DEFAULT);		       \
 		_p_func(_fmt, ##__VA_ARGS__);				       \
 	})
 

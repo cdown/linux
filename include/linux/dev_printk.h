@@ -38,8 +38,8 @@ __printf(3, 4) __cold
 int dev_printk_emit(int level, const struct device *dev, const char *fmt, ...);
 
 __printf(3, 4) __cold
-void dev_printk(const char *level, const struct device *dev,
-		const char *fmt, ...);
+void (dev_printk)(const char *level, const struct device *dev,
+		  const char *fmt, ...);
 __printf(2, 3) __cold
 void _dev_emerg(const struct device *dev, const char *fmt, ...);
 __printf(2, 3) __cold
