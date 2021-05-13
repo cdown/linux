@@ -1127,6 +1127,10 @@ int btrfs_load_block_group_zone_info(struct btrfs_block_group *cache, bool new)
 		}
 
 		if (zone.type == BLK_ZONE_TYPE_CONVENTIONAL) {
+			btrfs_err_in_rcu(fs_info,
+	"zoned: unexpected conventional zone %llu on device %s (devid %llu)",
+				zone.start << SECTOR_SHIFT,
+				rcu_str_deref(device->name), device->devid);
 			ret = -EIO;
 			goto out;
 		}
@@ -1189,7 +1193,8 @@ int btrfs_load_block_group_zone_info(struct btrfs_block_group *cache, bool new)
 	case 0: /* single */
 		if (alloc_offsets[0] == WP_MISSING_DEV) {
 			btrfs_err(fs_info,
-				  "zoned: cannot recover write pointer");
+			"zoned: cannot recover write pointer for zone %llu",
+				physical);
 			ret = -EIO;
 			goto out;
 		}
@@ -1211,8 +1216,9 @@ int btrfs_load_block_group_zone_info(struct btrfs_block_group *cache, bool new)
 
 out:
 	if (cache->alloc_offset > fs_info->zone_size) {
-		btrfs_err(fs_info, "zoned: invalid write pointer: %llu",
-			  cache->alloc_offset);
+		btrfs_err(fs_info,
+			"zoned: invalid write pointer %llu in block group %llu",
+			cache->alloc_offset, cache->start);
 		ret = -EIO;
 	}
 
