@@ -77,7 +77,7 @@ will also change.  Use the same on a small 4 core system, and "16-N" becomes
 "16-3" and now the same boot input will be flagged as invalid (start > end).
 
 The special case-tolerant group name "all" has a meaning of selecting all CPUs,
-so that "nohz_full=all" is the equivalent of "nohz_full=0-N".
+such that "isolcpus=all" is the equivalent of "isolcpus=0-N".
 
 The semantics of "N" and "all" is supported on a level of bitmaps and holds for
 all users of bitmap_parse().
