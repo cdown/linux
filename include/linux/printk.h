@@ -326,7 +326,7 @@ struct pi_entry {
 };
 
 #define __printk_index_emit(_fmt, _level, ...)				       \
-	({								       \
+	do {								       \
 		if (__builtin_constant_p(_fmt)) {			       \
 			/*
 			 * The compiler may not be able to eliminate this, so
@@ -344,7 +344,7 @@ struct pi_entry {
 				.level = _level,			       \
 			};						       \
 		}							       \
-	})
+	} while (0)
 
 /*
  * Some subsystems have their own custom printk that applies a va_format to a
