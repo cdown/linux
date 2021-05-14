@@ -110,7 +110,7 @@ static int pi_show(struct seq_file *s, void *v)
 	const struct pi_entry *entry = v;
 	int level = LOGLEVEL_DEFAULT;
 	enum printk_info_flags flags = 0;
-	u16 prefix_len;
+	u16 prefix_len = 0;
 
 	if (v == SEQ_START_TOKEN) {
 		seq_puts(s,
@@ -128,7 +128,11 @@ static int pi_show(struct seq_file *s, void *v)
 		return 0;
 	}
 
-	prefix_len = printk_parse_prefix(entry->fmt, &level, &flags);
+	if (entry->level)
+		printk_parse_prefix(entry->level, &level, &flags);
+	else
+		prefix_len = printk_parse_prefix(entry->fmt, &level, &flags);
+
 	seq_printf(s, "<%d%s> %s:%d %s \"",
 			level, flags & LOG_CONT ? ",c" : "", entry->file,
 			entry->line, entry->func);

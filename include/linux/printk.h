@@ -320,7 +320,7 @@ struct pi_entry {
 	 * format string. For these dynamic cases, we allow the subsystem to
 	 * tell us the level at compile time.
 	 *
-	 * KERN_DEFAULT indicates that the level, if any, is stored in fmt.
+	 * NULL indicates that the level, if any, is stored in fmt.
 	 */
 	const char *level;
 };
@@ -376,7 +376,7 @@ static inline void pi_remove_file(struct module *mod)
 
 #define printk_index_wrap(_p_func, _fmt, ...)				       \
 	({								       \
-		__printk_index_emit(_fmt, KERN_DEFAULT);		       \
+		__printk_index_emit(_fmt, NULL);		       \
 		_p_func(_fmt, ##__VA_ARGS__);				       \
 	})
 
