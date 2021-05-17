@@ -326,11 +326,11 @@ struct pi_entry {
 	({								       \
 		if (__builtin_constant_p(_fmt)) {			       \
 			/*
-			 * The compiler may not be able to eliminate this, so
-			 * we need to make sure that it doesn't see any
-			 * hypothetical assignment for non-constants even
-			 * though this is already inside the
-			 * __builtin_constant_p guard.
+			 * The compiler may not be able to eliminate the
+			 * non-constant variants of _fmt and _level, so we need
+			 * to make sure that it doesn't see any hypothetical
+			 * assignment for non-constants even though this is
+			 * already inside the __builtin_constant_p guard.
 			 */						       \
 			static const struct pi_entry _entry		       \
 			__used __section(".printk_index") = {		       \
@@ -338,7 +338,7 @@ struct pi_entry {
 				.func = __func__,			       \
 				.file = __FILE__,			       \
 				.line = __LINE__,			       \
-				.level = _level,			       \
+				.level = __builtin_constant_p(_level) ? (_level) : NULL, \
 			};						       \
 		}							       \
 	})
@@ -352,11 +352,12 @@ struct pi_entry {
  * infrastructure, the subsystem provides us with the start, fixed string, and
  * any subsequent text in the format string.
  *
- * pre and post must be known at compile time. If fmt is not known at compile
- * time, no index entry will be made.
+ * pre and post must be known at compile time, or compilation will fail (since
+ * this is a mistake). If fmt or level is not known at compile time, no index
+ * entry will be made (since this can legitimately happen).
  */
 #define printk_index_subsys_emit(pre, fmt, post, level)			       \
-	if (__builtin_constant_p(fmt))					       \
+	if (__builtin_constant_p(fmt) && __builtin_constant_p(level))	       \
 		__printk_index_emit(pre fmt post, level)
 
 #else /* !CONFIG_PRINTK_INDEX */
