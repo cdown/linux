@@ -323,7 +323,7 @@ struct pi_entry {
 	 * KERN_DEFAULT indicates that the level, if any, is stored in fmt.
 	 */
 	const char *level;
-};
+} __packed __aligned(64);
 
 #define __printk_index_emit(_fmt, _level, ...)				       \
 	({								       \
