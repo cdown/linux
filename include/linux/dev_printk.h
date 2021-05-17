@@ -102,20 +102,34 @@ void _dev_info(const struct device *dev, const char *fmt, ...)
  * possible use of #define dev_fmt(fmt) ...
  */
 
-#define dev_emerg(dev, fmt, ...)					\
-	_dev_emerg(dev, dev_fmt(fmt), ##__VA_ARGS__)
-#define dev_crit(dev, fmt, ...)						\
-	_dev_crit(dev, dev_fmt(fmt), ##__VA_ARGS__)
-#define dev_alert(dev, fmt, ...)					\
-	_dev_alert(dev, dev_fmt(fmt), ##__VA_ARGS__)
-#define dev_err(dev, fmt, ...)						\
-	_dev_err(dev, dev_fmt(fmt), ##__VA_ARGS__)
-#define dev_warn(dev, fmt, ...)						\
-	_dev_warn(dev, dev_fmt(fmt), ##__VA_ARGS__)
-#define dev_notice(dev, fmt, ...)					\
-	_dev_notice(dev, dev_fmt(fmt), ##__VA_ARGS__)
-#define dev_info(dev, fmt, ...)						\
-	_dev_info(dev, dev_fmt(fmt), ##__VA_ARGS__)
+#define dev_emerg(dev, fmt, ...) ({					\
+	printk_index_subsys_emit("%s %s: ", fmt, "", KERN_EMERG);	\
+	_dev_emerg(dev, dev_fmt(fmt), ##__VA_ARGS__);			\
+})
+#define dev_crit(dev, fmt, ...) ({					\
+	printk_index_subsys_emit("%s %s: ", fmt, "", KERN_CRIT);	\
+	_dev_crit(dev, dev_fmt(fmt), ##__VA_ARGS__);			\
+})
+#define dev_alert(dev, fmt, ...) ({					\
+	printk_index_subsys_emit("%s %s: ", fmt, "", KERN_ALERT);	\
+	_dev_alert(dev, dev_fmt(fmt), ##__VA_ARGS__);			\
+})
+#define dev_err(dev, fmt, ...) ({					\
+	printk_index_subsys_emit("%s %s: ", fmt, "", KERN_ERR);		\
+	_dev_err(dev, dev_fmt(fmt), ##__VA_ARGS__);			\
+})
+#define dev_warn(dev, fmt, ...) ({					\
+	printk_index_subsys_emit("%s %s: ", fmt, "", KERN_WARNING);	\
+	_dev_warn(dev, dev_fmt(fmt), ##__VA_ARGS__);			\
+})
+#define dev_notice(dev, fmt, ...) ({					\
+	printk_index_subsys_emit("%s %s: ", fmt, "", KERN_NOTICE);	\
+	_dev_notice(dev, dev_fmt(fmt), ##__VA_ARGS__);			\
+})
+#define dev_info(dev, fmt, ...) ({					\
+	printk_index_subsys_emit("%s %s: ", fmt, "", KERN_INFO);	\
+	_dev_info(dev, dev_fmt(fmt), ##__VA_ARGS__);			\
+})
 
 #if defined(CONFIG_DYNAMIC_DEBUG) || \
 	(defined(CONFIG_DYNAMIC_DEBUG_CORE) && defined(DYNAMIC_DEBUG_MODULE))
