@@ -3981,6 +3981,7 @@ smb2_set_oplock_level(struct cifsInodeInfo *cinode, __u32 oplock,
 		      unsigned int epoch, bool *purge_cache)
 {
 	oplock &= 0xFF;
+	cinode->lease_granted = false;
 	if (oplock == SMB2_OPLOCK_LEVEL_NOCHANGE)
 		return;
 	if (oplock == SMB2_OPLOCK_LEVEL_BATCH) {
@@ -4007,6 +4008,7 @@ smb21_set_oplock_level(struct cifsInodeInfo *cinode, __u32 oplock,
 	unsigned int new_oplock = 0;
 
 	oplock &= 0xFF;
+	cinode->lease_granted = true;
 	if (oplock == SMB2_OPLOCK_LEVEL_NOCHANGE)
 		return;
 
