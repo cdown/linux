@@ -8918,10 +8918,8 @@ void i40e_do_reset(struct i40e_pf *pf, u32 reset_flags, bool lock_acquired)
 		 */
 		i40e_prep_for_reset(pf);
 		i40e_reset_and_rebuild(pf, true, lock_acquired);
-		dev_info(&pf->pdev->dev,
-			 pf->flags & I40E_FLAG_DISABLE_FW_LLDP ?
-			 "FW LLDP is disabled\n" :
-			 "FW LLDP is enabled\n");
+		dev_info(&pf->pdev->dev, "FW LLDP is %s\n",
+			 pf->flags & I40E_FLAG_DISABLE_FW_LLDP ? "disabled" : "enabled");
 
 	} else if (reset_flags & BIT_ULL(__I40E_REINIT_REQUESTED)) {
 		int v;
@@ -15442,10 +15440,8 @@ static int i40e_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	 lldp_status == I40E_GET_FW_LLDP_STATUS_ENABLED) ?
 		(pf->flags &= ~I40E_FLAG_DISABLE_FW_LLDP) :
 		(pf->flags |= I40E_FLAG_DISABLE_FW_LLDP);
-	dev_info(&pdev->dev,
-		 (pf->flags & I40E_FLAG_DISABLE_FW_LLDP) ?
-			"FW LLDP is disabled\n" :
-			"FW LLDP is enabled\n");
+	dev_info(&pf->pdev->dev, "FW LLDP is %s\n",
+		 pf->flags & I40E_FLAG_DISABLE_FW_LLDP ? "disabled" : "enabled");
 
 	/* Enable FW to write default DCB config on link-up */
 	i40e_aq_set_dcb_parameters(hw, true, NULL);
