@@ -38,8 +38,8 @@ __printf(3, 4) __cold
 int dev_printk_emit(int level, const struct device *dev, const char *fmt, ...);
 
 __printf(3, 4) __cold
-void dev_printk(const char *level, const struct device *dev,
-		const char *fmt, ...);
+void _dev_printk(const char *level, const struct device *dev,
+		 const char *fmt, ...);
 __printf(2, 3) __cold
 void _dev_emerg(const struct device *dev, const char *fmt, ...);
 __printf(2, 3) __cold
@@ -69,7 +69,7 @@ static inline void __dev_printk(const char *level, const struct device *dev,
 				struct va_format *vaf)
 {}
 static inline __printf(3, 4)
-void dev_printk(const char *level, const struct device *dev,
+void _dev_printk(const char *level, const struct device *dev,
 		 const char *fmt, ...)
 {}
 
@@ -98,24 +98,53 @@ void _dev_info(const struct device *dev, const char *fmt, ...)
 #endif
 
 /*
+ * Some callsites directly call dev_printk rather than going through the
+ * dev_<level> infrastructure, so we need to emit here as well as inside those
+ * level-specific macros. Only one index entry will be produced, either way,
+ * since dev_printk's `fmt` isn't known at compile time if going through the
+ * dev_<level> macros.
+ */
+#define dev_printk(level, dev, fmt, ...) ({			\
+	dev_printk_index_emit(level, fmt);			\
+	_dev_printk(level, dev, fmt, ##__VA_ARGS__);		\
+})
+
+/*
  * #defines for all the dev_<level> macros to prefix with whatever
  * possible use of #define dev_fmt(fmt) ...
  */
 
-#define dev_emerg(dev, fmt, ...)					\
-	_dev_emerg(dev, dev_fmt(fmt), ##__VA_ARGS__)
-#define dev_crit(dev, fmt, ...)						\
-	_dev_crit(dev, dev_fmt(fmt), ##__VA_ARGS__)
-#define dev_alert(dev, fmt, ...)					\
-	_dev_alert(dev, dev_fmt(fmt), ##__VA_ARGS__)
-#define dev_err(dev, fmt, ...)						\
-	_dev_err(dev, dev_fmt(fmt), ##__VA_ARGS__)
-#define dev_warn(dev, fmt, ...)						\
-	_dev_warn(dev, dev_fmt(fmt), ##__VA_ARGS__)
-#define dev_notice(dev, fmt, ...)					\
-	_dev_notice(dev, dev_fmt(fmt), ##__VA_ARGS__)
-#define dev_info(dev, fmt, ...)						\
-	_dev_info(dev, dev_fmt(fmt), ##__VA_ARGS__)
+#define dev_printk_index_emit(level, fmt)				\
+	printk_index_subsys_emit("%s %s: ", level, fmt)
+
+#define dev_emerg(dev, fmt, ...) ({					\
+	dev_printk_index_emit(KERN_EMERG, dev_fmt(fmt));		\
+	_dev_emerg(dev, dev_fmt(fmt), ##__VA_ARGS__);			\
+})
+#define dev_crit(dev, fmt, ...) ({					\
+	dev_printk_index_emit(KERN_CRIT, dev_fmt(fmt));			\
+	_dev_crit(dev, dev_fmt(fmt), ##__VA_ARGS__);			\
+})
+#define dev_alert(dev, fmt, ...) ({					\
+	dev_printk_index_emit(KERN_ALERT, dev_fmt(fmt));		\
+	_dev_alert(dev, dev_fmt(fmt), ##__VA_ARGS__);			\
+})
+#define dev_err(dev, fmt, ...) ({					\
+	dev_printk_index_emit(KERN_ERR, dev_fmt(fmt));			\
+	_dev_err(dev, dev_fmt(fmt), ##__VA_ARGS__);			\
+})
+#define dev_warn(dev, fmt, ...) ({					\
+	dev_printk_index_emit(KERN_WARNING, dev_fmt(fmt));		\
+	_dev_warn(dev, dev_fmt(fmt), ##__VA_ARGS__);			\
+})
+#define dev_notice(dev, fmt, ...) ({					\
+	dev_printk_index_emit(KERN_NOTICE, dev_fmt(fmt));		\
+	_dev_notice(dev, dev_fmt(fmt), ##__VA_ARGS__);			\
+})
+#define dev_info(dev, fmt, ...) ({					\
+	dev_printk_index_emit(KERN_INFO, dev_fmt(fmt));			\
+	_dev_info(dev, dev_fmt(fmt), ##__VA_ARGS__);			\
+})
 
 #if defined(CONFIG_DYNAMIC_DEBUG) || \
 	(defined(CONFIG_DYNAMIC_DEBUG_CORE) && defined(DYNAMIC_DEBUG_MODULE))
