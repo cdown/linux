@@ -409,6 +409,8 @@ patternProperties:
     description: Firefly
   "^focaltech,.*":
     description: FocalTech Systems Co.,Ltd
+  "^forlinx,.*":
+    description: Baoding Forlinx Embedded Technology Co., Ltd.
   "^frida,.*":
     description: Shenzhen Frida LCD Co., Ltd.
   "^friendlyarm,.*":
@@ -1244,6 +1246,8 @@ patternProperties:
     description: Western Digital Corp.
   "^we,.*":
     description: Würth Elektronik GmbH.
+  "^welltech,.*":
+    description: Welltech Computer Co., Limited.
   "^wetek,.*":
     description: WeTek Electronics, limited.
   "^wexler,.*":
