@@ -1189,9 +1189,14 @@ module_param(ignore_loglevel, bool, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(ignore_loglevel,
 		 "ignore loglevel setting (prints all kernel messages to the console)");
 
-static bool suppress_message_printing(int level)
+static int effective_loglevel(struct console *con)
 {
-	return (level >= console_loglevel && !ignore_loglevel);
+	return max(console_loglevel, con ? con->level : LOGLEVEL_EMERG);
+}
+
+static bool suppress_message_printing(int level, struct console *con)
+{
+	return (level >= effective_loglevel(con) && !ignore_loglevel);
 }
 
 #ifdef CONFIG_BOOT_PRINTK_DELAY
@@ -1223,7 +1228,7 @@ static void boot_delay_msec(int level)
 	unsigned long timeout;
 
 	if ((boot_delay == 0 || system_state >= SYSTEM_RUNNING)
-		|| suppress_message_printing(level)) {
+		|| suppress_message_printing(level, NULL)) {
 		return;
 	}
 
@@ -1896,7 +1901,7 @@ static int console_trylock_spinning(void)
  * The console_lock must be held.
  */
 static void call_console_drivers(const char *ext_text, size_t ext_len,
-				 const char *text, size_t len)
+				 const char *text, size_t len, int level)
 {
 	static char dropped_text[64];
 	size_t dropped_len = 0;
@@ -1923,6 +1928,8 @@ static void call_console_drivers(const char *ext_text, size_t ext_len,
 			continue;
 		if (!cpu_online(smp_processor_id()) &&
 		    !(con->flags & CON_ANYTIME))
+			continue;
+		if (suppress_message_printing(level, con))
 			continue;
 		if (con->flags & CON_EXTENDED)
 			con->write(con, ext_text, ext_len);
@@ -2302,7 +2309,7 @@ static ssize_t msg_print_ext_body(char *buf, size_t size,
 static void console_lock_spinning_enable(void) { }
 static int console_lock_spinning_disable_and_check(void) { return 0; }
 static void call_console_drivers(const char *ext_text, size_t ext_len,
-				 const char *text, size_t len) {}
+				 const char *text, size_t len, int level) {}
 static bool suppress_message_printing(int level) { return false; }
 
 #endif /* CONFIG_PRINTK */
@@ -2650,8 +2657,10 @@ again:
 
 	for (;;) {
 		size_t ext_len = 0;
+		bool solicited = false;
 		int handover;
 		size_t len;
+		struct console *con;
 
 skip:
 		if (!prb_read_valid(prb, console_seq, &r))
@@ -2662,12 +2671,15 @@ skip:
 			console_seq = r.info->seq;
 		}
 
-		if (suppress_message_printing(r.info->level)) {
-			/*
-			 * Skip record we have buffered and already printed
-			 * directly to the console when we received it, and
-			 * record that has level above the console loglevel.
-			 */
+		/*
+		 * Already checked per-console in call_console_drivers(), but
+		 * we should avoid spending time formatting the text at all if
+		 * no console wants the message in the first place.
+		 */
+		for_each_console(con)
+			if (!suppress_message_printing(r.info->level, con))
+				solicited = true;
+		if (!solicited) {
 			console_seq++;
 			goto skip;
 		}
@@ -2711,7 +2723,8 @@ skip:
 		console_lock_spinning_enable();
 
 		stop_critical_timings();	/* don't trace print latency */
-		call_console_drivers(ext_text, ext_len, text, len);
+		call_console_drivers(ext_text, ext_len, text, len,
+				     r.info->level);
 		start_critical_timings();
 
 		handover = console_lock_spinning_disable_and_check();
@@ -3012,6 +3025,9 @@ void register_console(struct console *newcon)
 	    ((newcon->flags & (CON_CONSDEV | CON_BOOT)) == CON_CONSDEV)) {
 		newcon->flags &= ~CON_PRINTBUFFER;
 	}
+
+	/* Without any further configuration, no messages go through. */
+	newcon->level = LOGLEVEL_EMERG;
 
 	/*
 	 *	Put this console in the list - keep the
