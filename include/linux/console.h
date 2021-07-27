@@ -15,6 +15,7 @@
 #define _LINUX_CONSOLE_H_ 1
 
 #include <linux/atomic.h>
+#include <linux/device.h>
 #include <linux/types.h>
 
 struct vc_data;
@@ -136,6 +137,7 @@ static inline int con_debug_leave(void)
 #define CON_ANYTIME	(16) /* Safe to call when cpu is offline */
 #define CON_BRL		(32) /* Used for a braille device */
 #define CON_EXTENDED	(64) /* Use the extended output format a la /dev/kmsg */
+#define CON_LOGLEVEL	(128) /* Level set locally for this console */
 
 struct console {
 	char	name[16];
@@ -155,6 +157,8 @@ struct console {
 	unsigned long dropped;
 	void	*data;
 	struct	 console *next;
+	int	level;
+	struct	device *classdev;
 };
 
 /*
