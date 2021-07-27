@@ -7,9 +7,12 @@
 #include <linux/printk.h>
 #include <linux/capability.h>
 #include <linux/ratelimit.h>
+#include <linux/console.h>
 #include "internal.h"
 
 static const int ten_thousand = 10000;
+static const int min_loglevel = LOGLEVEL_EMERG;
+static const int max_loglevel = LOGLEVEL_DEBUG + 1;
 
 static int proc_dointvec_minmax_sysadmin(struct ctl_table *table, int write,
 				void *buffer, size_t *lenp, loff_t *ppos)
@@ -20,13 +23,71 @@ static int proc_dointvec_minmax_sysadmin(struct ctl_table *table, int write,
 	return proc_dointvec_minmax(table, write, buffer, lenp, ppos);
 }
 
+static int printk_sysctl_deprecated(struct ctl_table *table, int write,
+				    void __user *buffer, size_t *lenp,
+				    loff_t *ppos)
+{
+	int res = proc_dointvec(table, write, buffer, lenp, ppos);
+
+	if (write)
+		pr_warn_ratelimited(
+			"printk: The kernel.printk sysctl is deprecated and will be removed soon. Use kernel.force_console_loglevel, kernel.default_message_loglevel, kernel.minimum_console_loglevel, or kernel.default_console_loglevel instead.\n"
+		);
+
+	return res;
+}
+
+#define FORCE_CONSOLE_LOGLEVEL_MAX_LEN sizeof("unset\n") + 1
+
+static int printk_force_console_loglevel(struct ctl_table *table, int write,
+					 void __user *buffer, size_t *lenp,
+					 loff_t *ppos)
+{
+
+	char level[FORCE_CONSOLE_LOGLEVEL_MAX_LEN] = "unset";
+	struct ctl_table ltable = *table;
+	int ret, value;
+
+	ltable.data = level;
+	ltable.maxlen = sizeof(level) - 1;
+
+	if (!write) {
+		if (console_loglevel != LOGLEVEL_INVALID)
+			snprintf(ltable.data,
+				 FORCE_CONSOLE_LOGLEVEL_MAX_LEN, "%d",
+				 console_loglevel);
+		return proc_dostring(&ltable, write, buffer, lenp, ppos);
+	}
+
+	/* We accept either a loglevel, or "unset". */
+	ret = proc_dostring(&ltable, write, buffer, lenp, ppos);
+	if (ret)
+		return ret;
+
+	if (strncmp(ltable.data, "unset", sizeof("unset")) == 0) {
+		console_loglevel = LOGLEVEL_INVALID;
+		return 0;
+	}
+
+	ret = kstrtoint(ltable.data, 10, &value);
+	if (ret)
+		return ret;
+
+	if (value < LOGLEVEL_EMERG || value > LOGLEVEL_DEBUG + 1)
+		return -ERANGE;
+
+	console_loglevel = value;
+
+	return 0;
+}
+
 static struct ctl_table printk_sysctls[] = {
 	{
 		.procname	= "printk",
 		.data		= &console_loglevel,
 		.maxlen		= 4*sizeof(int),
 		.mode		= 0644,
-		.proc_handler	= proc_dointvec,
+		.proc_handler	= printk_sysctl_deprecated,
 	},
 	{
 		.procname	= "printk_ratelimit",
@@ -75,6 +136,38 @@ static struct ctl_table printk_sysctls[] = {
 		.proc_handler	= proc_dointvec_minmax_sysadmin,
 		.extra1		= SYSCTL_ZERO,
 		.extra2		= SYSCTL_TWO,
+	},
+	{
+		.procname	= "force_console_loglevel",
+		.mode		= 0644,
+		.proc_handler	= printk_force_console_loglevel,
+	},
+	{
+		.procname	= "default_message_loglevel",
+		.data		= &default_message_loglevel,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= (void *)&min_loglevel,
+		.extra2		= (void *)&max_loglevel,
+	},
+	{
+		.procname	= "default_console_loglevel",
+		.data		= &default_console_loglevel,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= (void *)&min_loglevel,
+		.extra2		= (void *)&max_loglevel,
+	},
+	{
+		.procname	= "minimum_console_loglevel",
+		.data		= &minimum_console_loglevel,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= (void *)&min_loglevel,
+		.extra2		= (void *)&max_loglevel,
 	},
 	{}
 };
