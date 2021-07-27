@@ -153,6 +153,7 @@ struct console {
 	uint	ospeed;
 	void	*data;
 	struct	 console *next;
+	int	level;
 };
 
 /*
