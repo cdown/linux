@@ -17,6 +17,7 @@
 #include <linux/atomic.h>
 #include <linux/bits.h>
 #include <linux/rculist.h>
+#include <linux/device.h>
 #include <linux/types.h>
 
 struct vc_data;
@@ -154,6 +155,8 @@ static inline int con_debug_leave(void)
  *			receiving the printk spam for obvious reasons.
  * @CON_EXTENDED:	The console supports the extended output format of
  *			/dev/kmesg which requires a larger output buffer.
+ * @CON_LOGLEVEL:	The console has a local loglevel set, overriding the
+ *			global loglevel.
  */
 enum cons_flags {
 	CON_PRINTBUFFER		= BIT(0),
@@ -163,6 +166,7 @@ enum cons_flags {
 	CON_ANYTIME		= BIT(4),
 	CON_BRL			= BIT(5),
 	CON_EXTENDED		= BIT(6),
+	CON_LOGLEVEL		= BIT(7),
 };
 
 /**
@@ -203,6 +207,8 @@ struct console {
 	unsigned long		dropped;
 	void			*data;
 	struct hlist_node	node;
+	int			level;
+	struct device		*classdev;
 };
 
 #ifdef CONFIG_LOCKDEP

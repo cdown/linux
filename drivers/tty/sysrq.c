@@ -51,6 +51,7 @@
 #include <linux/syscalls.h>
 #include <linux/of.h>
 #include <linux/rcupdate.h>
+#include <linux/console.h>
 
 #include <asm/ptrace.h>
 #include <asm/irq_regs.h>
@@ -101,12 +102,25 @@ __setup("sysrq_always_enabled", sysrq_always_enabled_setup);
 static void sysrq_handle_loglevel(int key)
 {
 	int i;
+	int warned = 0;
+	struct console *con;
 
 	i = key - '0';
 	console_loglevel = CONSOLE_LOGLEVEL_DEFAULT;
 	pr_info("Loglevel set to %d\n", i);
 	console_loglevel = i;
+
+	console_lock();
+	for_each_console(con) {
+		if (!warned && per_console_loglevel_is_set(con)) {
+			warned = 1;
+			pr_warn("Overriding per-console loglevel from sysrq\n");
+		}
+		con->level = -1;
+	}
+	console_unlock();
 }
+
 static const struct sysrq_key_op sysrq_loglevel_op = {
 	.handler	= sysrq_handle_loglevel,
 	.help_msg	= "loglevel(0-9)",
