@@ -44,6 +44,7 @@
 #include <linux/irq_work.h>
 #include <linux/ctype.h>
 #include <linux/uio.h>
+#include <linux/device.h>
 #include <linux/sched/clock.h>
 #include <linux/sched/debug.h>
 #include <linux/sched/task_stack.h>
@@ -383,6 +384,20 @@ static struct latched_seq clear_seq = {
 	.latch		= SEQCNT_LATCH_ZERO(clear_seq.latch),
 	.val[0]		= 0,
 	.val[1]		= 0,
+};
+
+static struct class *console_class;
+
+enum loglevel_source {
+	LLS_GLOBAL,
+	LLS_LOCAL,
+	LLS_IGNORE_LOGLEVEL,
+};
+
+static const char *const loglevel_source_names[] = {
+	[LLS_GLOBAL] = "global",
+	[LLS_LOCAL] = "local",
+	[LLS_IGNORE_LOGLEVEL] = "ignore_loglevel",
 };
 
 #ifdef CONFIG_PRINTK_CALLER
@@ -1202,9 +1217,67 @@ module_param(ignore_loglevel, bool, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(ignore_loglevel,
 		 "ignore loglevel setting (prints all kernel messages to the console)");
 
-static bool suppress_message_printing(int level)
+static bool __read_mostly ignore_per_console_loglevel;
+
+static int __init ignore_per_console_loglevel_setup(char *str)
 {
-	return (level >= console_loglevel && !ignore_loglevel);
+	ignore_per_console_loglevel = true;
+	return 0;
+}
+
+early_param("ignore_per_console_loglevel", ignore_per_console_loglevel_setup);
+module_param(ignore_per_console_loglevel, bool, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(ignore_per_console_loglevel,
+		 "ignore per-console loglevel setting (only respect global console loglevel)");
+
+/*
+ * Hierarchy of loglevel authority:
+ *
+ * 1. ignore_loglevel. Can be set at boot or at runtime with
+ *    /sys/module/printk/parameters/ignore_loglevel. Overrides absolutely
+ *    everything since it's used to debug.
+ * 2. ignore_per_console_loglevel. Existing per-console loglevel values are left
+ *    intact, but are ignored in favour of console_loglevel as long as this is
+ *    true.
+ * 3. con->level. Optional.
+ * 4. console_loglevel. The default console loglevel, always present.
+ *
+ * Callers typically only need the level _or_ the source, but they're both
+ * emitted from this function so that the effective loglevel logic can be
+ * kept in one place.
+ */
+static int console_effective_loglevel(const struct console *con,
+				      enum loglevel_source *source)
+{
+	enum loglevel_source lsource;
+	int level;
+
+	if (ignore_loglevel) {
+		lsource = LLS_IGNORE_LOGLEVEL;
+		level = CONSOLE_LOGLEVEL_MOTORMOUTH;
+		goto out;
+	}
+
+	if (!ignore_per_console_loglevel &&
+	    (con && (con->flags & CON_LOGLEVEL))) {
+		lsource = LLS_LOCAL;
+		level = con->level;
+		goto out;
+	}
+
+	lsource = LLS_GLOBAL;
+	level = console_loglevel;
+
+out:
+	*source = lsource;
+	return level;
+}
+
+static bool suppress_message_printing(int level, struct console *con)
+{
+	enum loglevel_source source;
+
+	return level >= console_effective_loglevel(con, &source);
 }
 
 #ifdef CONFIG_BOOT_PRINTK_DELAY
@@ -1236,7 +1309,7 @@ static void boot_delay_msec(int level)
 	unsigned long timeout;
 
 	if ((boot_delay == 0 || system_state >= SYSTEM_RUNNING)
-		|| suppress_message_printing(level)) {
+		|| suppress_message_printing(level, NULL)) {
 		return;
 	}
 
@@ -1656,6 +1729,33 @@ static void syslog_clear(void)
 	mutex_unlock(&syslog_lock);
 }
 
+/*
+ * Using the global klogctl/syslog API is unlikely to do what you want if you
+ * also have console specific loglevels. Warn about it.
+ */
+static DEFINE_RATELIMIT_STATE(syslog_percon_ratelimit, 60 * HZ, 1);
+
+static void warn_on_local_loglevel(void)
+{
+	struct console *con;
+
+	if (!__ratelimit(&syslog_percon_ratelimit))
+		return;
+
+	if (ignore_per_console_loglevel)
+		return;
+
+	console_lock();
+	for_each_console(con) {
+		if (con->flags & CON_LOGLEVEL) {
+			pr_warn("%s (%d) used syslog(SYSLOG_ACTION_CONSOLE_*) with per-console loglevels set. Consoles with per-console loglevels will ignore the updated value.\n",
+				current->comm, current->pid);
+			break;
+		}
+	}
+	console_unlock();
+}
+
 int do_syslog(int type, char __user *buf, int len, int source)
 {
 	struct printk_info info;
@@ -1666,6 +1766,18 @@ int do_syslog(int type, char __user *buf, int len, int source)
 	error = check_syslog_permissions(type, source);
 	if (error)
 		return error;
+
+	/*
+	 * This is the old, global API -- syslog() has no way to indicate which
+	 * console the changes are supposed to go to. If you want per-console
+	 * loglevel controls, then use the sysfs API.
+	 *
+	 * SYSLOG_ACTION_CONSOLE_{ON,OFF,LEVEL} emulate the old behaviour by
+	 * forcing all consoles to the specified level. Note that this means
+	 * you cannot reasonably mix using per-console loglevels and
+	 * syslog(SYSLOG_ACTION_CONSOLE_*), since this will override your
+	 * per-console loglevel settings.
+	 */
 
 	switch (type) {
 	case SYSLOG_ACTION_CLOSE:	/* Close log */
@@ -1701,12 +1813,14 @@ int do_syslog(int type, char __user *buf, int len, int source)
 		break;
 	/* Disable logging to console */
 	case SYSLOG_ACTION_CONSOLE_OFF:
+		warn_on_local_loglevel();
 		if (saved_console_loglevel == LOGLEVEL_DEFAULT)
 			saved_console_loglevel = console_loglevel;
 		console_loglevel = minimum_console_loglevel;
 		break;
 	/* Enable logging to console */
 	case SYSLOG_ACTION_CONSOLE_ON:
+		warn_on_local_loglevel();
 		if (saved_console_loglevel != LOGLEVEL_DEFAULT) {
 			console_loglevel = saved_console_loglevel;
 			saved_console_loglevel = LOGLEVEL_DEFAULT;
@@ -1714,6 +1828,7 @@ int do_syslog(int type, char __user *buf, int len, int source)
 		break;
 	/* Set level of messages printed to console */
 	case SYSLOG_ACTION_CONSOLE_LEVEL:
+		warn_on_local_loglevel();
 		if (len < 1 || len > 8)
 			return -EINVAL;
 		if (len < minimum_console_loglevel)
@@ -2329,7 +2444,10 @@ static void call_console_driver(struct console *con, const char *text, size_t le
 				char *dropped_text)
 {
 }
-static bool suppress_message_printing(int level) { return false; }
+static bool suppress_message_printing(int level, struct console *con)
+{
+	return false;
+}
 static bool __pr_flush(struct console *con, int timeout_ms, bool reset_on_progress) { return true; }
 
 #endif /* CONFIG_PRINTK */
@@ -2368,7 +2486,8 @@ static void set_user_specified(struct console_cmdline *c, bool user_specified)
 	console_set_on_cmdline = 1;
 }
 
-static int __add_preferred_console(char *name, int idx, char *options,
+static int __add_preferred_console(char *name, int idx, int loglevel,
+				   short initial_flags, char *options,
 				   char *brl_options, bool user_specified)
 {
 	struct console_cmdline *c;
@@ -2397,6 +2516,8 @@ static int __add_preferred_console(char *name, int idx, char *options,
 	set_user_specified(c, user_specified);
 	braille_set_options(c, brl_options);
 
+	c->level = loglevel;
+	c->flags = initial_flags;
 	c->index = idx;
 	return 0;
 }
@@ -2418,7 +2539,10 @@ __setup("console_msg_format=", console_msg_format_setup);
 static int __init console_setup(char *str)
 {
 	char buf[sizeof(console_cmdline[0].name) + 4]; /* 4 for "ttyS" */
-	char *s, *options, *brl_options = NULL;
+	char *s, *options, *res, *brl_options = NULL;
+	const char loglevel_prefix[] = ",loglevel:";
+	int loglevel = default_console_loglevel;
+	short initial_flags = 0;
 	int idx;
 
 	/*
@@ -2427,7 +2551,8 @@ static int __init console_setup(char *str)
 	 * for exactly this purpose.
 	 */
 	if (str[0] == 0 || strcmp(str, "null") == 0) {
-		__add_preferred_console("ttynull", 0, NULL, NULL, true);
+		__add_preferred_console("ttynull", 0, 0, 0, NULL, NULL,
+					true);
 		return 1;
 	}
 
@@ -2447,6 +2572,18 @@ static int __init console_setup(char *str)
 	options = strchr(str, ',');
 	if (options)
 		*(options++) = 0;
+
+	res = strstr(options, loglevel_prefix);
+	if (res) {
+		*res = '\0';
+		res += strlen(loglevel_prefix);
+		if (isdigit(res[0])) {
+			loglevel = clamp(res[0] - '0', LOGLEVEL_EMERG,
+					 LOGLEVEL_DEBUG + 1);
+			initial_flags |= CON_LOGLEVEL;
+		}
+	}
+
 #ifdef __sparc__
 	if (!strcmp(str, "ttya"))
 		strcpy(buf, "ttyS0");
@@ -2459,7 +2596,8 @@ static int __init console_setup(char *str)
 	idx = simple_strtoul(s, NULL, 10);
 	*s = 0;
 
-	__add_preferred_console(buf, idx, options, brl_options, true);
+	__add_preferred_console(buf, idx, loglevel, initial_flags, options,
+				brl_options, true);
 	return 1;
 }
 __setup("console=", console_setup);
@@ -2479,7 +2617,7 @@ __setup("console=", console_setup);
  */
 int add_preferred_console(char *name, int idx, char *options)
 {
-	return __add_preferred_console(name, idx, options, NULL, false);
+	return __add_preferred_console(name, idx, 0, 0, options, NULL, false);
 }
 
 bool console_suspend_enabled = true;
@@ -2700,7 +2838,7 @@ static bool console_emit_next_record(struct console *con, char *text, char *ext_
 	}
 
 	/* Skip record that has level above the console loglevel. */
-	if (suppress_message_printing(r.info->level)) {
+	if (suppress_message_printing(r.info->level, con)) {
 		con->seq++;
 		goto skip;
 	}
@@ -3006,6 +3144,145 @@ static int __init keep_bootcon_setup(char *str)
 
 early_param("keep_bootcon", keep_bootcon_setup);
 
+#ifdef CONFIG_PRINTK
+static ssize_t loglevel_show(struct device *dev, struct device_attribute *attr,
+			     char *buf)
+{
+	struct console *con = classdev_to_console(dev);
+
+	if (con->flags & CON_LOGLEVEL)
+		return sysfs_emit(buf, "%d\n", con->level);
+	else
+		return sysfs_emit(buf, "unset\n");
+}
+
+static ssize_t loglevel_store(struct device *dev, struct device_attribute *attr,
+			      const char *buf, size_t size)
+{
+	struct console *con = classdev_to_console(dev);
+	ssize_t ret;
+	int tmp;
+
+	if (!strcmp(buf, "unset") || !strcmp(buf, "unset\n")) {
+		con->flags &= ~CON_LOGLEVEL;
+		return size;
+	}
+
+	ret = kstrtoint(buf, 10, &tmp);
+	if (ret < 0)
+		return ret;
+
+	if (tmp < LOGLEVEL_EMERG || tmp > LOGLEVEL_DEBUG + 1)
+		return -ERANGE;
+
+	if (tmp < minimum_console_loglevel)
+		return -EINVAL;
+
+	con->level = tmp;
+	con->flags |= CON_LOGLEVEL;
+
+	return size;
+}
+
+static DEVICE_ATTR_RW(loglevel);
+
+static ssize_t effective_loglevel_source_show(struct device *dev,
+					      struct device_attribute *attr,
+					      char *buf)
+{
+	struct console *con = classdev_to_console(dev);
+	enum loglevel_source source;
+
+	console_effective_loglevel(con, &source);
+	return sysfs_emit(buf, "%s\n", loglevel_source_names[source]);
+}
+
+static DEVICE_ATTR_RO(effective_loglevel_source);
+
+static ssize_t effective_loglevel_show(struct device *dev,
+				       struct device_attribute *attr,
+				       char *buf)
+{
+	struct console *con = classdev_to_console(dev);
+	enum loglevel_source source;
+
+	return sysfs_emit(buf, "%d\n",
+			  console_effective_loglevel(con, &source));
+}
+
+static DEVICE_ATTR_RO(effective_loglevel);
+
+static ssize_t enabled_show(struct device *dev, struct device_attribute *attr,
+			    char *buf)
+{
+	struct console *con = classdev_to_console(dev);
+
+	return sysfs_emit(buf, "%d\n", !!(con->flags & CON_ENABLED));
+}
+
+static DEVICE_ATTR_RO(enabled);
+
+static struct attribute *console_sysfs_attrs[] = {
+	&dev_attr_loglevel.attr,
+	&dev_attr_effective_loglevel_source.attr,
+	&dev_attr_effective_loglevel.attr,
+	&dev_attr_enabled.attr,
+	NULL,
+};
+
+ATTRIBUTE_GROUPS(console_sysfs);
+
+static void console_classdev_release(struct device *dev)
+{
+	kfree(dev);
+}
+
+static void console_register_device(struct console *new)
+{
+	/*
+	 * We might be called from register_console() before the class is
+	 * registered. If that happens, we'll take care of it in
+	 * printk_late_init.
+	 */
+	if (IS_ERR_OR_NULL(console_class))
+		return;
+
+	new->classdev = kzalloc(sizeof(struct device), GFP_KERNEL);
+	if (!new->classdev)
+		return;
+
+	device_initialize(new->classdev);
+	dev_set_name(new->classdev, "%s", new->name);
+	dev_set_drvdata(new->classdev, new);
+	new->classdev->release = console_classdev_release;
+	new->classdev->class = console_class;
+	if (device_add(new->classdev))
+		put_device(new->classdev);
+}
+
+static void console_setup_class(void)
+{
+	struct console *con;
+
+	/*
+	 * printk exists for the lifetime of the kernel, it cannot be unloaded,
+	 * so we should never end up back in here.
+	 */
+	if (WARN_ON(console_class))
+		return;
+
+	console_class = class_create(THIS_MODULE, "console");
+	if (!IS_ERR(console_class))
+		console_class->dev_groups = console_sysfs_groups;
+
+	for_each_console(con)
+		console_register_device(con);
+}
+#else /* CONFIG_PRINTK */
+static void console_register_device(struct console *new) {}
+static void console_setup_class(void) {}
+#endif
+
 /*
  * This is called by register_console() to try to match
  * the newly registered console with any of the ones selected
@@ -3037,6 +3314,11 @@ static int try_enable_preferred_console(struct console *newcon,
 				continue;
 			if (newcon->index < 0)
 				newcon->index = c->index;
+
+			if (c->flags & CON_LOGLEVEL)
+				newcon->level = c->level;
+			newcon->flags |= c->flags;
+			newcon->classdev = NULL;
 
 			if (_braille_register_console(newcon, c))
 				return 0;
@@ -3199,6 +3481,7 @@ void register_console(struct console *newcon)
 		/* Begin with next message. */
 		newcon->seq = prb_next_seq(prb);
 	}
+	console_register_device(newcon);
 	console_unlock();
 	console_sysfs_notify();
 
@@ -3265,6 +3548,10 @@ int unregister_console(struct console *console)
 		console_drivers->flags |= CON_CONSDEV;
 
 	console->flags &= ~CON_ENABLED;
+
+	if (console->classdev)
+		device_unregister(console->classdev);
+
 	console_unlock();
 	console_sysfs_notify();
 
@@ -3324,6 +3611,10 @@ void __init console_init(void)
  * To mitigate this problem somewhat, only unregister consoles whose memory
  * intersects with the init section. Note that all other boot consoles will
  * get unregistered when the real preferred console is registered.
+ *
+ * Early consoles will also have been registered before we had the
+ * infrastructure to put them into /sys/class/console, so make sure they get
+ * set up now that we're ready.
  */
 static int __init printk_late_init(void)
 {
@@ -3357,6 +3648,9 @@ static int __init printk_late_init(void)
 					console_cpu_notify, NULL);
 	WARN_ON(ret < 0);
 	printk_sysctl_init();
+
+	console_setup_class();
+
 	return 0;
 }
 late_initcall(printk_late_init);
