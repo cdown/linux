@@ -15,6 +15,7 @@
 #define _LINUX_CONSOLE_H_ 1
 
 #include <linux/atomic.h>
+#include <linux/device.h>
 #include <linux/types.h>
 
 struct vc_data;
@@ -137,6 +138,30 @@ static inline int con_debug_leave(void)
 #define CON_BRL		(32) /* Used for a braille device */
 #define CON_EXTENDED	(64) /* Use the extended output format a la /dev/kmsg */
 
+/*
+ * The loglevel for a console can be set in many places:
+ *
+ * 1. It can be forced to a certain value permanently (ignore_loglevel);
+ * 2. It can be forced temporarily to a value (sysctls kernel.printk
+ *    (deprecated), kernel.force_console_loglevel,
+ *    kernel.minimum_console_loglevel, panic, sysrq);
+ * 3. It can be locally set (console=.../N on kernel command line,
+ *    /sys/class/console/.../loglevel);
+ * 4. It can be set by a global default
+ *    (CONFIG_CONSOLE_LOGLEVEL_{DEFAULT,QUIET}, loglevel= on kernel command
+ *    line, sysctl kernel.default_console_loglevel).
+ *
+ * If case 3 happens, even if another forced value in effect, CON_LOGLEVEL will
+ * be set.
+ */
+#define CON_LOGLEVEL	(128) /* Level set locally for this console */
+
+/*
+ * Console has active class device, so may have active readers/writers from
+ * /sys/class hierarchy.
+ */
+#define CON_CLASSDEV_ACTIVE	(256)
+
 struct console {
 	char	name[16];
 	void	(*write)(struct console *, const char *, unsigned);
@@ -153,6 +178,8 @@ struct console {
 	uint	ospeed;
 	void	*data;
 	struct	 console *next;
+	int	level;
+	struct	device classdev;
 };
 
 /*

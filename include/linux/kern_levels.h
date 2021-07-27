@@ -24,6 +24,8 @@
 #define KERN_CONT	KERN_SOH "c"
 
 /* integer equivalents of KERN_<LEVEL> */
+#define LOGLEVEL_INVALID	-127	/* Invalid loglevel, used to indicate
+					   this loglevel is not used */
 #define LOGLEVEL_SCHED		-2	/* Deferred messages from sched code
 					 * are set to this special level */
 #define LOGLEVEL_DEFAULT	-1	/* default (or last) loglevel */
