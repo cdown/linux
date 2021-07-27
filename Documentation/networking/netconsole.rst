@@ -67,6 +67,23 @@ Built-in netconsole starts immediately after the TCP stack is
 initialized and attempts to bring up the supplied dev at the supplied
 address.
 
+You can also set a loglevel at boot time on the kernel command line::
+
+  console=netcon0/2
+
+This can also be changed at runtime::
+
+  $ ls -l /sys/class/console/netcon/
+  total 0
+  lrwxrwxrwx 1 root root    0 May 18 13:28 subsystem -> ../../../../class/console/
+  -r--r--r-- 1 root root 4096 May 18 13:28 effective_loglevel
+  -r--r--r-- 1 root root 4096 May 18 13:28 effective_loglevel_source
+  -r--r--r-- 1 root root 4096 May 18 13:28 enabled
+  -rw-r--r-- 1 root root 4096 May 18 13:28 loglevel
+  -rw-r--r-- 1 root root 4096 May 18 13:28 uevent
+
+See Documentation/admin-guide/per-console-loglevel.rst for more information.
+
 The remote host has several options to receive the kernel messages,
 for example:
 

@@ -1,0 +1,50 @@
+What:		/sys/class/console/
+Date:		May 2022
+Contact:	Chris Down <chris@chrisdown.name>
+Description:	Interface for viewing and setting per-console attributes, like
+		the per-console loglevel. For a high-level document describing
+		the motivations for this interface and related non-sysfs
+		controls, see
+		Documentation/admin-guide/per-console-loglevel.rst.
+
+What:		/sys/class/console/<C>/effective_loglevel
+Date:		May 2022
+Contact:	Chris Down <chris@chrisdown.name>
+Description:	Read only. The currently effective loglevel for this console.
+		All messages emitted with a loglevel below the effective value
+		will be emitted to the console.
+
+What:		/sys/class/console/<C>/effective_loglevel_source
+Date:		May 2022
+Contact:	Chris Down <chris@chrisdown.name>
+Description:	Read only. The currently effective loglevel source for this
+		console -- for example, whether it was set globally based on
+		the default loglevel, or whether it was set locally. Possible
+		values are:
+
+		local: The loglevel comes from the per-console loglevel.
+		global: The loglevel comes from the global default loglevel.
+		forced: The loglevel comes from the global forced loglevel.
+		minimum: The loglevel comes from the global minimum loglevel.
+		forced_minimum: A forced global loglevel is active, but it is
+				below the global minimum loglevel. The loglevel
+				comes from the global minimum loglevel and is
+				forced regardless of the console's current
+				local loglevel setting.
+		ignore_loglevel: The loglevel is ignored as ignore_loglevel is
+		                 present on the kernel command line.
+
+What:		/sys/class/console/<C>/enabled
+Date:		May 2022
+Contact:	Chris Down <chris@chrisdown.name>
+Description:	Read only. "1" if the console is enabled, "0" otherwise.
+
+What:		/sys/class/console/<C>/loglevel
+Date:		May 2022
+Contact:	Chris Down <chris@chrisdown.name>
+Description:	Read write. The current local loglevel, which will take effect
+		if not overridden by other non-sysfs controls (see
+		Documentation/admin-guide/per-console-loglevel.rst). Bounds are
+		0 (LOGLEVEL_EMERG) to 8 (LOGLEVEL_DEBUG + 1) inclusive. Also
+		takes the special value "unset" to indicate that no local
+		loglevel is set, and we should defer to the global controls.

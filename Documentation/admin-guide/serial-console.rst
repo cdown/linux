@@ -17,7 +17,7 @@ use for console output.
 
 The format of this option is::
 
-	console=device,options
+	console=device,options/loglevel
 
 	device:		tty0 for the foreground virtual console
 			ttyX for any other virtual console
@@ -32,15 +32,23 @@ The format of this option is::
 			and F is flow control ('r' for RTS). Default is
 			9600n8. The maximum baudrate is 115200.
 
+	loglevel:	optional. a number can be provided from 0
+			(LOGLEVEL_EMERG) to 8 (LOGLEVEL_DEBUG + 1), and
+			messages below that will be emitted onto the console as
+			they become available.
+
 You can specify multiple console= options on the kernel command line.
 Output will appear on all of them. The last device will be used when
 you open ``/dev/console``. So, for example::
 
-	console=ttyS1,9600 console=tty0
+	console=ttyS1,9600/5 console=tty0
 
 defines that opening ``/dev/console`` will get you the current foreground
-virtual console, and kernel messages will appear on both the VGA
-console and the 2nd serial port (ttyS1 or COM2) at 9600 baud.
+virtual console, and kernel messages will appear on both the VGA console and
+the 2nd serial port (ttyS1 or COM2) at 9600 baud. The optional loglevel "5"
+indicates that this console will emit messages more serious than
+LOGLEVEL_NOTICE (that is, LOGLEVEL_WARNING and below, since more serious
+messages have lower ordering).
 
 Note that you can only define one console per device type (serial, video).
 
@@ -113,3 +121,4 @@ Replace the sample values as needed.
    the integration of these patches into m68k, ppc and alpha.
 
 Miquel van Smoorenburg <miquels@cistron.nl>, 11-Jun-2000
+Chris Down <chris@chrisdown.name>, 17-May-2020
