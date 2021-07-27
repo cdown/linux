@@ -255,7 +255,7 @@ static int __init loglevel(char *str)
 	 * are quite hard to debug
 	 */
 	if (get_option(&str, &newlevel)) {
-		console_loglevel = newlevel;
+		default_console_loglevel = newlevel;
 		return 0;
 	}
 
