@@ -71,6 +71,9 @@ extern int console_printk[];
 
 extern void console_verbose(void);
 
+struct console;
+int per_console_loglevel_is_set(const struct console *con);
+
 /* strlen("ratelimit") + 1 */
 #define DEVKMSG_STR_MAX_SIZE 10
 extern char devkmsg_log_str[];
