@@ -2372,8 +2372,9 @@ static void set_user_specified(struct console_cmdline *c, bool user_specified)
 	console_set_on_cmdline = 1;
 }
 
-static int __add_preferred_console(char *name, int idx, char *options,
-				   char *brl_options, bool user_specified)
+static int __add_preferred_console(char *name, int idx, int loglevel,
+				   char *options, char *brl_options,
+				   bool user_specified)
 {
 	struct console_cmdline *c;
 	int i;
@@ -2401,6 +2402,7 @@ static int __add_preferred_console(char *name, int idx, char *options,
 	set_user_specified(c, user_specified);
 	braille_set_options(c, brl_options);
 
+	c->loglevel = loglevel;
 	c->index = idx;
 	return 0;
 }
@@ -2422,7 +2424,8 @@ __setup("console_msg_format=", console_msg_format_setup);
 static int __init console_setup(char *str)
 {
 	char buf[sizeof(console_cmdline[0].name) + 4]; /* 4 for "ttyS" */
-	char *s, *options, *brl_options = NULL;
+	char *s, *options, *slevel, *brl_options = NULL;
+	int loglevel = LOGLEVEL_EMERG;
 	int idx;
 
 	/*
@@ -2431,7 +2434,7 @@ static int __init console_setup(char *str)
 	 * for exactly this purpose.
 	 */
 	if (str[0] == 0 || strcmp(str, "null") == 0) {
-		__add_preferred_console("ttynull", 0, NULL, NULL, true);
+		__add_preferred_console("ttynull", 0, 0, NULL, NULL, true);
 		return 1;
 	}
 
@@ -2451,6 +2454,14 @@ static int __init console_setup(char *str)
 	options = strchr(str, ',');
 	if (options)
 		*(options++) = 0;
+
+	slevel = strchr(options, '/');
+	if (slevel) {
+		*(slevel++) = 0;
+		if (kstrtoint(slevel, 10, &loglevel))
+			loglevel = LOGLEVEL_EMERG;
+	}
+
 #ifdef __sparc__
 	if (!strcmp(str, "ttya"))
 		strcpy(buf, "ttyS0");
@@ -2463,7 +2474,7 @@ static int __init console_setup(char *str)
 	idx = simple_strtoul(s, NULL, 10);
 	*s = 0;
 
-	__add_preferred_console(buf, idx, options, brl_options, true);
+	__add_preferred_console(buf, idx, loglevel, options, brl_options, true);
 	return 1;
 }
 __setup("console=", console_setup);
@@ -2483,7 +2494,8 @@ __setup("console=", console_setup);
  */
 int add_preferred_console(char *name, int idx, char *options)
 {
-	return __add_preferred_console(name, idx, options, NULL, false);
+	return __add_preferred_console(name, idx, LOGLEVEL_EMERG, options,
+				       NULL, false);
 }
 
 bool console_suspend_enabled = true;
@@ -2964,6 +2976,9 @@ static int try_enable_preferred_console(struct console *newcon,
 			if (newcon->index < 0)
 				newcon->index = c->index;
 
+			newcon->level = c->loglevel;
+			newcon->flags |= CON_LEVEL;
+
 			if (_braille_register_console(newcon, c))
 				return 0;
 
@@ -3091,7 +3106,8 @@ void register_console(struct console *newcon)
 	}
 
 	/* Without any further configuration, no messages go through. */
-	newcon->level = LOGLEVEL_EMERG;
+	if (!(newcon->flags & CON_LEVEL))
+		newcon->level = LOGLEVEL_EMERG;
 
 	/*
 	 *	Put this console in the list - keep the
