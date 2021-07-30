@@ -136,6 +136,7 @@ static inline int con_debug_leave(void)
 #define CON_ANYTIME	(16) /* Safe to call when cpu is offline */
 #define CON_BRL		(32) /* Used for a braille device */
 #define CON_EXTENDED	(64) /* Use the extended output format a la /dev/kmsg */
+#define CON_LEVEL	(128) /* Level explicitly set on command line */
 
 struct console {
 	char	name[16];
