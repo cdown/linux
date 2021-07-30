@@ -696,10 +696,10 @@
 		ttyS<n>[,options]
 		ttyUSB0[,options]
 			Use the specified serial port.  The options are of
-			the form "bbbbpnf", where "bbbb" is the baud rate,
+			the form "bbbbpnf/l", where "bbbb" is the baud rate,
 			"p" is parity ("n", "o", or "e"), "n" is number of
-			bits, and "f" is flow control ("r" for RTS or
-			omit it).  Default is "9600n8".
+			bits, "f" is flow control ("r" for RTS or omit it),
+			and "l" is the loglevel on [0,7]. Default is "9600n8".
 
 			See Documentation/admin-guide/serial-console.rst for more
 			information.  See
