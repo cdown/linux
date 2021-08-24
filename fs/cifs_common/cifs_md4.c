@@ -1,4 +1,7 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
+ * fs/cifs_common/cifs_md4.c
+ *
  * Cryptographic API.
  *
  * MD4 Message Digest Algorithm (RFC1320).
@@ -13,11 +16,6 @@
  * Copyright (c) Cryptoapi developers.
  * Copyright (c) 2002 David S. Miller (davem@redhat.com)
  * Copyright (c) 2002 James Morris <jmorris@intercode.com.au>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
  *
  */
 #include <linux/init.h>
