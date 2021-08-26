@@ -1248,8 +1248,7 @@ static void hns_roce_cmq_setup_basic_desc(struct hns_roce_cmq_desc *desc,
 {
 	memset((void *)desc, 0, sizeof(struct hns_roce_cmq_desc));
 	desc->opcode = cpu_to_le16(opcode);
-	desc->flag =
-		cpu_to_le16(HNS_ROCE_CMD_FLAG_NO_INTR | HNS_ROCE_CMD_FLAG_IN);
+	desc->flag = cpu_to_le16(HNS_ROCE_CMD_FLAG_IN);
 	if (is_read)
 		desc->flag |= cpu_to_le16(HNS_ROCE_CMD_FLAG_WR);
 	else
@@ -1288,16 +1287,11 @@ static int __hns_roce_cmq_send(struct hns_roce_dev *hr_dev,
 	/* Write to hardware */
 	roce_write(hr_dev, ROCEE_TX_CMQ_PI_REG, csq->head);
 
-	/* If the command is sync, wait for the firmware to write back,
-	 * if multi descriptors to be sent, use the first one to check
-	 */
-	if (le16_to_cpu(desc->flag) & HNS_ROCE_CMD_FLAG_NO_INTR) {
-		do {
-			if (hns_roce_cmq_csq_done(hr_dev))
-				break;
-			udelay(1);
-		} while (++timeout < priv->cmq.tx_timeout);
-	}
+	do {
+		if (hns_roce_cmq_csq_done(hr_dev))
+			break;
+		udelay(1);
+	} while (++timeout < priv->cmq.tx_timeout);
 
 	if (hns_roce_cmq_csq_done(hr_dev)) {
 		for (ret = 0, i = 0; i < num; i++) {
@@ -1761,8 +1755,7 @@ static int __hns_roce_set_vf_switch_param(struct hns_roce_dev *hr_dev,
 	if (ret)
 		return ret;
 
-	desc.flag =
-		cpu_to_le16(HNS_ROCE_CMD_FLAG_NO_INTR | HNS_ROCE_CMD_FLAG_IN);
+	desc.flag = cpu_to_le16(HNS_ROCE_CMD_FLAG_IN);
 	desc.flag &= cpu_to_le16(~HNS_ROCE_CMD_FLAG_WR);
 	roce_set_bit(swt->cfg, VF_SWITCH_DATA_CFG_ALW_LPBK_S, 1);
 	roce_set_bit(swt->cfg, VF_SWITCH_DATA_CFG_ALW_LCL_LPBK_S, 0);
@@ -2004,6 +1997,7 @@ static void set_default_caps(struct hns_roce_dev *hr_dev)
 	caps->gid_table_len[0] = HNS_ROCE_V2_GID_INDEX_NUM;
 
 	if (hr_dev->pci_dev->revision >= PCI_REVISION_ID_HIP09) {
+		caps->flags |= HNS_ROCE_CAP_FLAG_STASH;
 		caps->max_sq_inline = HNS_ROCE_V3_MAX_SQ_INLINE;
 	} else {
 		caps->max_sq_inline = HNS_ROCE_V2_MAX_SQ_INLINE;
@@ -4113,6 +4107,9 @@ static void modify_qp_reset_to_init(struct ib_qp *ibqp,
 
 	if (hr_qp->en_flags & HNS_ROCE_QP_CAP_RQ_RECORD_DB)
 		hr_reg_enable(context, QPC_RQ_RECORD_EN);
+
+	if (hr_qp->en_flags & HNS_ROCE_QP_CAP_OWNER_DB)
+		hr_reg_enable(context, QPC_OWNER_MODE);
 
 	hr_reg_write(context, QPC_RQ_DB_RECORD_ADDR_L,
 		     lower_32_bits(hr_qp->rdb.dma) >> 1);
