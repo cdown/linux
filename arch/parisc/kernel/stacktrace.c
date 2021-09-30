@@ -17,6 +17,10 @@ static void dump_trace(struct task_struct *task, struct stack_trace *trace)
 {
 	struct unwind_frame_info info;
 
+	if (regs)
+		if (!fn(cookie, regs->iaoq[0]))
+			return;
+
 	unwind_frame_init_task(&info, task, NULL);
 
 	/* unwind stack and save entries in stack_trace struct */
