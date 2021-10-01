@@ -3064,7 +3064,7 @@ struct module *__module_address(unsigned long addr)
 	struct module *mod;
 	struct mod_tree_root *tree;
 
-	if (addr >= mod_tree.addr_min && addr <= mod_tree.addr_max)
+	if (is_potential_module_address(addr))
 		tree = &mod_tree;
 #ifdef CONFIG_ARCH_WANTS_MODULES_DATA_IN_VMALLOC
 	else if (addr >= mod_data_tree.addr_min && addr <= mod_data_tree.addr_max)
@@ -3082,6 +3082,21 @@ struct module *__module_address(unsigned long addr)
 			mod = NULL;
 	}
 	return mod;
+}
+
+/**
+ * is_potential_module_address() - check if this is probably a module address
+ * @addr: the address to check
+ *
+ * This is identical to is_module_address, except for it only checks the module
+ * address bounds without actually checking if any module is assigned. As such,
+ * the address could be in range, but not assigned to any module. This is
+ * cheaper than is_module_address as it doesn't need module mutex/preempt
+ * disabled to iterate the module list.
+ */
+bool is_potential_module_address(unsigned long addr)
+{
+	return addr > mod_tree.addr_min && addr < mod_tree.addr_max;
 }
 
 /**
