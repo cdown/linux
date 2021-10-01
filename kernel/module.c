@@ -4737,7 +4737,7 @@ struct module *__module_address(unsigned long addr)
 {
 	struct module *mod;
 
-	if (addr < module_addr_min || addr > module_addr_max)
+	if (!is_potential_module_address(addr))
 		return NULL;
 
 	module_assert_mutex_or_preempt();
@@ -4749,6 +4749,21 @@ struct module *__module_address(unsigned long addr)
 			mod = NULL;
 	}
 	return mod;
+}
+
+/**
+ * is_potential_module_address() - check if this is probably a module address
+ * @addr: the address to check
+ *
+ * This is identical to is_module_address, except for it only checks the module
+ * address bounds without actually checking if any module is assigned. As such,
+ * the address could be in range, but not assigned to any module. This is
+ * cheaper than is_module_address as it doesn't need module mutex/preempt
+ * disabled to iterate the module list.
+ */
+bool is_potential_module_address(unsigned long addr)
+{
+	return addr > module_addr_min && addr < module_addr_max;
 }
 
 /**
