@@ -2913,7 +2913,7 @@ static void console_release(struct device *dev)
 {
 	struct console *con = container_of(dev, struct console, dev);
 
-	if (WARN(con->is_static, "Freeing static early console!\n"))
+	if (WARN(is_static_console(con), "Freeing static early console!\n"))
 		return;
 
 	if (WARN(con->flags & CON_ENABLED, "Freeing running console!\n"))
@@ -2939,7 +2939,7 @@ static void console_register_device(struct console *new)
 	if (!printk_late_done)
 		return;
 
-	if (new->is_static)
+	if (is_static_console(new))
 		console_init_device(new);
 
 	new->dev.bus = &console_subsys;
@@ -3173,7 +3173,8 @@ void register_console(struct console *newcon)
 	 * users know there might be something in the kernel's log buffer that
 	 * went to the bootconsole (that they do not see on the real console)
 	 */
-	pr_info("%sconsole [%s%d] enabled\n",
+	pr_info("%s%sconsole [%s%d] enabled\n",
+		is_static_console(newcon) ? "static " : "",
 		(newcon->flags & CON_BOOT) ? "boot" : "" ,
 		newcon->name, newcon->index);
 	if (bcon &&

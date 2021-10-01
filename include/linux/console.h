@@ -17,6 +17,8 @@
 #include <linux/atomic.h>
 #include <linux/types.h>
 #include <linux/device.h>
+#include <linux/module.h>
+#include <linux/kallsyms.h>
 
 struct vc_data;
 struct console_font_op;
@@ -189,15 +191,21 @@ extern struct console *allocate_console(struct console_operations *ops,
  * Helpers for get/put that do the right thing for static early consoles.
  */
 
+static inline bool is_static_console(struct console *con)
+{
+	unsigned long *addr = (unsigned long *) con;
+	return is_kernel(*addr) || is_potential_module_address(*addr);
+}
+
 #define get_console(con) \
 do { \
-	if (!con->is_static) \
+	if (is_static_console(con)) \
 		get_device(&(con)->dev); \
 } while (0)
 
 #define put_console(con) \
 do { \
-	if (con && !con->is_static) \
+	if (con && is_static_console(con)) \
 		put_device(&((struct console *)con)->dev); \
 } while (0)
 
