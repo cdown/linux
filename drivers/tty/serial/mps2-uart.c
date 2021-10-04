@@ -638,11 +638,12 @@ static int __init mps2_uart_init(void)
 {
 	int ret;
 
+#ifdef CONFIG_SERIAL_MPS2_UART_CONSOLE
 	ret = uart_init_console_dfl(&mps2_uart_driver, &mps2_cons_ops,
-					SERIAL_NAME,
-					SERIAL_MPS2_UART_CONSOLE);
+					SERIAL_NAME);
 	if (ret)
 		return ret;
+#endif
 
 	ret = uart_register_driver(&mps2_uart_driver);
 	if (ret)

@@ -1855,10 +1855,12 @@ static int __init serial_omap_init(void)
 {
 	int ret;
 
+#ifdef CONFIG_SERIAL_OMAP_CONSOLE
 	ret = uart_init_console_dfl(&serial_omap_reg, &omap_cons_ops,
-					OMAP_SERIAL_NAME, SERIAL_OMAP_CONSOLE);
+					OMAP_SERIAL_NAME);
 	if (ret)
 		return ret;
+#endif
 
 	ret = uart_register_driver(&serial_omap_reg);
 	if (ret != 0)

@@ -3262,12 +3262,14 @@ static int sci_probe_single(struct platform_device *dev,
 
 	mutex_lock(&sci_uart_registration_lock);
 	if (!sci_uart_driver.state) {
+#ifdef CONFIG_SERIAL_SH_SCI_CONSOLE
 		ret = uart_init_console_dfl(&sci_uart_driver, &sci_cons_ops,
-						"ttySC", SERIAL_SH_SCI_CONSOLE);
+						"ttySC");
 		if (ret) {
 			mutex_unlock(&sci_uart_registration_lock);
 			return ret;
 		}
+#endif
 
 		ret = uart_register_driver(&sci_uart_driver);
 		if (ret) {

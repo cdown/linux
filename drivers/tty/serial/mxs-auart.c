@@ -1728,10 +1728,11 @@ static int __init mxs_auart_init(void)
 {
 	int r;
 
-	r = uart_init_console_dfl(&auart_driver, &auart_cons_ops, "ttyAPP",
-				      SERIAL_MXS_AUART_CONSOLE);
+#ifdef CONFIG_SERIAL_MXS_AUART_CONSOLE
+	r = uart_init_console_dfl(&auart_driver, &auart_cons_ops, "ttyAPP");
 	if (r)
 		return r;
+#endif
 
 	r = uart_register_driver(&auart_driver);
 	if (r)

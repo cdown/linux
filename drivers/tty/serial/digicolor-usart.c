@@ -529,11 +529,12 @@ static int __init digicolor_uart_init(void)
 {
 	int ret;
 
+#ifdef CONFIG_SERIAL_CONEXANT_DIGICOLOR_CONSOLE
 	ret = uart_init_console_dfl(&digicolor_uart, &digicolor_cons_ops,
-					"ttyS",
-					SERIAL_CONEXANT_DIGICOLOR_CONSOLE);
+					"ttyS");
 	if (ret)
 		return ret;
+#endif
 
 	ret = uart_register_driver(&digicolor_uart);
 	if (ret)

@@ -1879,10 +1879,11 @@ static int __init msm_serial_init(void)
 {
 	int ret;
 
-	ret = uart_init_console_dfl(&msm_uart_driver, &msm_cons_ops,
-					"ttyMSM", SERIAL_MSM_CONSOLE);
+#ifdef CONFIG_SERIAL_MSM_CONSOLE
+	ret = uart_init_console_dfl(&msm_uart_driver, &msm_cons_ops, "ttyMSM");
 	if (unlikely(ret))
 		return ret;
+#endif
 
 	ret = uart_register_driver(&msm_uart_driver);
 	if (unlikely(ret))

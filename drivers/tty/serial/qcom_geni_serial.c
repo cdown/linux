@@ -1513,11 +1513,12 @@ static int __init qcom_geni_serial_init(void)
 {
 	int ret;
 
+#ifdef CONFIG_SERIAL_QCOM_GENI_CONSOLE
 	ret = uart_init_console_dfl(&qcom_geni_console_driver,
-					&qcom_geni_cons_ops, "ttyMSM",
-					SERIAL_QCOM_GENI_CONSOLE);
+					&qcom_geni_cons_ops, "ttyMSM");
 	if (ret)
 		return ret;
+#endif
 
 	ret = uart_register_driver(&qcom_geni_uart_driver);
 	if (ret)

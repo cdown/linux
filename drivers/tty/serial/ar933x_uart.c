@@ -849,7 +849,7 @@ static int __init ar933x_uart_init(void)
 
 #ifdef CONFIG_SERIAL_AR933X_CONSOLE
 	ret = uart_init_console_dfl(&ar933x_uart_driver, &ar933x_cons_ops,
-					"ttyATH", SERIAL_AR933X_CONSOLE);
+					"ttyATH");
 	if (ret)
 		return ret;
 #endif

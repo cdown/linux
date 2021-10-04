@@ -2723,11 +2723,12 @@ static int lpuart_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, &sport->port);
 
+#ifdef CONFIG_SERIAL_FSL_LPUART_CONSOLE
 	ops = lpuart_is_32(sport) ? &lpuart32_cons_ops : &lpuart_cons_ops;
-	ret = uart_init_console_dfl(&lpuart_reg, ops, DEV_NAME,
-					SERIAL_FSL_LPUART_CONSOLE);
+	ret = uart_init_console_dfl(&lpuart_reg, ops, DEV_NAME);
 	if (ret)
 		goto failed_init_console;
+#endif
 
 	if (lpuart_is_32(sport))
 		ret = devm_request_irq(&pdev->dev, sport->port.irq, lpuart32_int, 0,

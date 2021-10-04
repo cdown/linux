@@ -1824,11 +1824,12 @@ static int __init stm32_usart_init(void)
 
 	pr_info("%s\n", banner);
 
+#ifdef CONFIG_SERIAL_STM32_CONSOLE
 	ret = uart_init_console_dfl(&stm32_usart_driver, &stm32_cons_ops,
-					STM32_SERIAL_NAME,
-					SERIAL_STM32_CONSOLE);
+					STM32_SERIAL_NAME);
 	if (ret)
 		return ret;
+#endif
 
 	ret = uart_register_driver(&stm32_usart_driver);
 	if (ret)

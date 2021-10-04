@@ -923,10 +923,11 @@ static int __init serial_pxa_init(void)
 {
 	int ret;
 
-	ret = uart_init_console_dfl(&serial_pxa_reg, &pxa_cons_ops, "ttyS",
-					SERIAL_PXA_CONSOLE);
+#ifdef CONFIG_SERIAL_PXA_CONSOLE
+	ret = uart_init_console_dfl(&serial_pxa_reg, &pxa_cons_ops, "ttyS");
 	if (ret)
 		return ret;
+#endif
 
 	ret = uart_register_driver(&serial_pxa_reg);
 	if (ret != 0)

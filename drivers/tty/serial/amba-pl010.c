@@ -728,13 +728,13 @@ static int pl010_probe(struct amba_device *dev, const struct amba_id *id)
 
 	mutex_lock(&amba_reg_lock);
 	if (!amba_reg.state) {
-		ret = uart_init_console_dfl(&amba_reg, &amba_cons_ops,
-						"ttyAM",
-						SERIAL_AMBA_PL010_CONSOLE);
+#ifdef CONFIG_SERIAL_AMBA_PL010_CONSOLE
+		ret = uart_init_console_dfl(&amba_reg, &amba_cons_ops, "ttyAM");
 		if (ret < 0) {
 			mutex_unlock(&amba_reg_lock);
 			goto out;
 		}
+#endif
 
 		ret = uart_register_driver(&amba_reg);
 		if (ret < 0) {

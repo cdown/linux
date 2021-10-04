@@ -877,11 +877,12 @@ of_err:
 	pm_runtime_enable(&pdev->dev);
 
 	if (!ulite_uart_driver.state) {
+#ifdef CONFIG_SERIAL_UARTLITE_CONSOLE
 		ret = uart_init_console_dfl(&ulite_uart_driver,
-						&ulite_cons_ops, ULITE_NAME,
-						SERIAL_UARTLITE_CONSOLE);
+						&ulite_cons_ops, ULITE_NAME);
 		if (ret)
 			return ret;
+#endif
 
 		dev_dbg(&pdev->dev, "uartlite: calling uart_register_driver()\n");
 		ret = uart_register_driver(&ulite_uart_driver);

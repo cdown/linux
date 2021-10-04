@@ -2983,11 +2983,12 @@ static int __init atmel_serial_init(void)
 {
 	int ret;
 
+#ifdef CONFIG_SERIAL_ATMEL_CONSOLE
 	ret = uart_init_console_dfl(&atmel_uart, &atmel_cons_ops,
-					ATMEL_DEVICENAME,
-					SERIAL_ATMEL_CONSOLE);
+					ATMEL_DEVICENAME);
 	if (ret)
 		return ret;
+#endif
 
 	ret = uart_register_driver(&atmel_uart);
 	if (ret)

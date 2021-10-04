@@ -1487,10 +1487,11 @@ static int su_probe(struct platform_device *op)
 	    of_node_name_eq(dp, "lom-console"))
 		ignore_line = true;
 
-	err = uart_init_console_dfl(&sunsu_reg, &sunsu_cons_ops, "ttyS",
-					SERIAL_SUNSU_CONSOLE);
+#ifdef CONFIG_SERIAL_SUNSU_CONSOLE
+	err = uart_init_console_dfl(&sunsu_reg, &sunsu_cons_ops, "ttyS");
 	if (err)
 		goto out_unmap;
+#endif
 
 	sunserial_console_match(sunsu_reg.cons, dp, &sunsu_reg, up->port.line,
 				ignore_line);

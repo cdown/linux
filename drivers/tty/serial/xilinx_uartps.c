@@ -1462,12 +1462,13 @@ static int cdns_uart_probe(struct platform_device *pdev)
 		cdns_uart_uart_driver.major = CDNS_UART_MAJOR;
 		cdns_uart_uart_driver.minor = CDNS_UART_MINOR;
 		cdns_uart_uart_driver.nr = CDNS_UART_NR_PORTS;
+#ifdef CONFIG_SERIAL_XILINX_PS_UART_CONSOLE
 		rc = uart_init_console_dfl(&cdns_uart_uart_driver,
 					       &cdns_uart_console_ops,
-					       CDNS_UART_TTY_NAME,
-					       CONFIG_SERIAL_XILINX_PS_UART_CONSOLE);
+					       CDNS_UART_TTY_NAME);
 		if (rc < 0)
 			return rc;
+#endif
 
 		rc = uart_register_driver(&cdns_uart_uart_driver);
 		if (rc < 0) {

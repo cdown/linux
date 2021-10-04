@@ -973,11 +973,12 @@ static int __init asc_init(void)
 
 	printk(banner);
 
+#ifdef CONFIG_SERIAL_ST_ASC_CONSOLE
 	ret = uart_init_console_dfl(&asc_uart_driver, &asc_cons_ops,
-					ASC_SERIAL_NAME,
-					CONFIG_SERIAL_ST_ASC_CONSOLE);
+					ASC_SERIAL_NAME);
 	if (ret)
 		return ret;
+#endif
 
 	ret = uart_register_driver(&asc_uart_driver);
 	if (ret)

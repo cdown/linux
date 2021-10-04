@@ -2783,11 +2783,12 @@ static int pl011_register_port(struct uart_amba_port *uap)
 	pl011_write(0xffff, uap, REG_ICR);
 
 	if (!amba_reg.state) {
+#ifdef CONFIG_SERIAL_AMBA_PL011_CONSOLE
 		ret = uart_init_console(&amba_reg, &amba_cons_ops, "ttyAMA",
-					    CON_PRINTBUFFER | CON_ANYTIME, -1,
-					    SERIAL_AMBA_PL011_CONSOLE);
+					    CON_PRINTBUFFER | CON_ANYTIME, -1);
 		if (ret < 0)
 			goto out;
+#endif
 
 		ret = uart_register_driver(&amba_reg);
 		if (ret < 0)

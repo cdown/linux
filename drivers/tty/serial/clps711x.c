@@ -537,11 +537,12 @@ static int __init uart_clps711x_init(void)
 {
 	int ret;
 
+#ifdef CONFIG_SERIAL_CLPS711X_CONSOLE
 	ret = uart_init_console_dfl(&clps711x_uart, &clps711x_cons_ops,
-					UART_CLPS711X_DEVNAME,
-					SERIAL_CLPS711X_CONSOLE);
+					UART_CLPS711X_DEVNAME);
 	if (ret)
 		return ret;
+#endif
 
 	ret = uart_register_driver(&clps711x_uart);
 	if (ret)

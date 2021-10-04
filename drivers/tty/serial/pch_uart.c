@@ -1930,11 +1930,12 @@ static int __init pch_uart_module_init(void)
 {
 	int ret;
 
+#ifdef CONFIG_SERIAL_PCH_UART_CONSOLE
 	ret = uart_init_console_dfl(&pch_uart_driver, &pch_cons_ops,
-					PCH_UART_DRIVER_DEVICE,
-					SERIAL_PCH_UART_CONSOLE);
+					PCH_UART_DRIVER_DEVICE);
 	if (ret)
 		return ret;
+#endif
 
 	/* register as UART driver */
 	ret = uart_register_driver(&pch_uart_driver);

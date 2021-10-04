@@ -2593,10 +2593,12 @@ static int __init imx_uart_init(void)
 {
 	int ret;
 
+#ifdef CONFIG_SERIAL_IMX_CONSOLE
 	ret = uart_init_console_dfl(&imx_uart_uart_driver, &imx_cons_ops,
-					DEV_NAME, SERIAL_IMX_CONSOLE);
+					DEV_NAME);
 	if (ret)
 		return ret;
+#endif
 
 	ret = uart_register_driver(&imx_uart_uart_driver);
 	if (ret)

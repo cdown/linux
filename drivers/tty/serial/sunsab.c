@@ -1012,10 +1012,11 @@ static int sab_probe(struct platform_device *op)
 	struct uart_sunsab_port *up;
 	int err;
 
-	err = uart_init_console_dfl(&sunsab_reg, &sunsab_cons_ops, "ttyS",
-					SERIAL_SUNSAB_CONSOLE);
+#ifdef CONFIG_SERIAL_SUNSAB_CONSOLE
+	err = uart_init_console_dfl(&sunsab_reg, &sunsab_cons_ops, "ttyS");
 	if (err)
 		return err;
+#endif
 
 	up = &sunsab_ports[inst * 2];
 

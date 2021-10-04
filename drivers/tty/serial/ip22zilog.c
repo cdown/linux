@@ -1163,10 +1163,12 @@ static int __init ip22zilog_ports_init(void)
 		panic("IP22-Zilog: Unable to register zs interrupt handler.\n");
 	}
 
+#ifdef CONFIG_SERIAL_IP22_ZILOG_CONSOLE
 	ret = uart_init_console_dfl(&ip22zilog_reg, &ip22zilog_cons_ops,
-					"ttyS", SERIAL_IP22_ZILOG_CONSOLE);
+					"ttyS");
 	if (ret)
 		return ret;
+#endif
 
 	ret = uart_register_driver(&ip22zilog_reg);
 	if (ret == 0) {

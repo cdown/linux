@@ -1455,11 +1455,12 @@ static int zs_probe(struct platform_device *op)
 	sunzilog_init_hw(&up[1]);
 
 	if (!keyboard_mouse) {
+#ifdef CONFIG_SERIAL_SUNZILOG_CONSOLE
 		err = uart_init_console_dfl(&sunzilog_reg,
-						&sunzilog_cons_ops, "ttyS",
-						SERIAL_SUNZILOG_CONSOLE);
+						&sunzilog_cons_ops, "ttyS");
 		if (err)
 			return err;
+#endif
 
 		if (sunserial_console_match(sunzilog_reg.cons, op->dev.of_node,
 					    &sunzilog_reg, up[0].port.line,

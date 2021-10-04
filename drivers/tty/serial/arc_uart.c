@@ -652,11 +652,12 @@ static int __init arc_serial_init(void)
 {
 	int ret;
 
+#ifdef CONFIG_SERIAL_ARC_CONSOLE
 	ret = uart_init_console_dfl(&arc_uart_driver, &arc_cons_ops,
-					ARC_SERIAL_DEV_NAME,
-					SERIAL_ARC_CONSOLE);
+					ARC_SERIAL_DEV_NAME);
 	if (ret)
 		return ret;
+#endif
 
 	ret = uart_register_driver(&arc_uart_driver);
 	if (ret)

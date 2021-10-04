@@ -908,11 +908,12 @@ static int __init linflex_serial_init(void)
 {
 	int ret;
 
+#ifdef CONFIG_SERIAL_FSL_LINFLEXUART_CONSOLE
 	ret = uart_init_console_dfl(&linflex_reg, &linflex_console_ops,
-					DEV_NAME,
-					SERIAL_FSL_LINFLEXUART_CONSOLE);
+					DEV_NAME);
 	if (ret < 0)
 		return ret;
+#endif
 
 	ret = uart_register_driver(&linflex_reg);
 	if (ret)

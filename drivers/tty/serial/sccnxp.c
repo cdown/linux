@@ -977,10 +977,11 @@ static int sccnxp_probe(struct platform_device *pdev)
 	s->uart.minor		= SCCNXP_MINOR;
 	s->uart.nr		= s->chip->nr;
 
-	ret = uart_init_console_dfl(&s->uart, &sccnxp_cons_ops, "ttySC",
-					SERIAL_SCCNXP_CONSOLE);
+#ifdef CONFIG_SERIAL_SCCNXP_CONSOLE
+	ret = uart_init_console_dfl(&s->uart, &sccnxp_cons_ops, "ttySC");
 	if (ret)
 		goto err_out;
+#endif
 
 	ret = uart_register_driver(&s->uart);
 	if (ret) {

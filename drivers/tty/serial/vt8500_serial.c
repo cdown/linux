@@ -719,10 +719,12 @@ static int __init vt8500_serial_init(void)
 {
 	int ret;
 
+#ifdef CONFIG_SERIAL_VT8500_CONSOLE
 	ret = uart_init_console_dfl(&vt8500_uart_driver, &vt8500_cons_ops,
-					"ttyWMT", SERIAL_VT8500_CONSOLE);
+					"ttyWMT");
 	if (ret)
 		return ret;
+#endif
 
 	ret = uart_register_driver(&vt8500_uart_driver);
 	if (unlikely(ret))
