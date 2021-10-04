@@ -2975,9 +2975,11 @@ struct console *init_console(struct console_operations *ops,
 {
 	struct console *new;
 
-	new = kzalloc(sizeof(*new), GFP_KERNEL);
+	/* Early consoles are are too early for kalloc() */
+	new = memblock_alloc(sizeof(*new), SMP_CACHE_BYTES);
 	if (!new)
 		return NULL;
+	memset(new, 0, sizeof(*new));
 
 	new->ops = ops;
 	strscpy(new->name, name, sizeof(new->name));
