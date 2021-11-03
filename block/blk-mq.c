@@ -2478,6 +2478,13 @@ static inline unsigned short blk_plug_max_rq_count(struct blk_plug *plug)
 	return BLK_MAX_REQUEST_COUNT;
 }
 
+static inline bool blk_mq_queue_enter(struct request_queue *q, struct bio *bio)
+{
+	if (!blk_try_enter_queue(q, false) && bio_queue_enter(bio))
+		return false;
+	return true;
+}
+
 /**
  * blk_mq_submit_bio - Create and send a request to block device.
  * @bio: Bio pointer.
@@ -2506,27 +2513,31 @@ void blk_mq_submit_bio(struct bio *bio)
 		__blk_queue_split(q, &bio, &nr_segs);
 
 	if (!bio_integrity_prep(bio))
-		goto queue_exit;
+		return;
 
 	if (!blk_queue_nomerges(q) && bio_mergeable(bio)) {
 		if (blk_attempt_plug_merge(q, bio, nr_segs, &same_queue_rq))
-			goto queue_exit;
+			return;
 		if (blk_mq_sched_bio_merge(q, bio, nr_segs))
-			goto queue_exit;
+			return;
 	}
-
-	rq_qos_throttle(q, bio);
 
 	plug = blk_mq_plug(q, bio);
 	if (plug && plug->cached_rq) {
 		rq = rq_list_pop(&plug->cached_rq);
 		INIT_LIST_HEAD(&rq->queuelist);
+		rq_qos_throttle(q, bio);
 	} else {
 		struct blk_mq_alloc_data data = {
 			.q		= q,
 			.nr_tags	= 1,
 			.cmd_flags	= bio->bi_opf,
 		};
+
+		if (unlikely(!blk_mq_queue_enter(q, bio)))
+			return;
+
+		rq_qos_throttle(q, bio);
 
 		if (plug) {
 			data.nr_tags = plug->nr_ios;
@@ -2538,7 +2549,8 @@ void blk_mq_submit_bio(struct bio *bio)
 			rq_qos_cleanup(q, bio);
 			if (bio->bi_opf & REQ_NOWAIT)
 				bio_wouldblock_error(bio);
-			goto queue_exit;
+			blk_queue_exit(q);
+			return;
 		}
 	}
 
@@ -2621,10 +2633,6 @@ void blk_mq_submit_bio(struct bio *bio)
 		/* Default case. */
 		blk_mq_sched_insert_request(rq, false, true, true);
 	}
-
-	return;
-queue_exit:
-	blk_queue_exit(q);
 }
 
 static size_t order_to_size(unsigned int order)

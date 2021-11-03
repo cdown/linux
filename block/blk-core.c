@@ -868,18 +868,16 @@ static void __submit_bio(struct bio *bio)
 {
 	struct gendisk *disk = bio->bi_bdev->bd_disk;
 
-	if (unlikely(bio_queue_enter(bio) != 0))
-		return;
-
 	if (!submit_bio_checks(bio) || !blk_crypto_bio_prep(&bio))
-		goto queue_exit;
+		return;
 	if (!disk->fops->submit_bio) {
 		blk_mq_submit_bio(bio);
-		return;
+	} else {
+		if (unlikely(bio_queue_enter(bio) != 0))
+			return;
+		disk->fops->submit_bio(bio);
+		blk_queue_exit(disk->queue);
 	}
-	disk->fops->submit_bio(bio);
-queue_exit:
-	blk_queue_exit(disk->queue);
 }
 
 /*
