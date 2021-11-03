@@ -12,7 +12,6 @@
 #include <linux/igmp.h>
 #include <linux/workqueue.h>
 #include <net/net_namespace.h>
-#include <net/protocol.h>
 #include <net/ip.h>
 #include <net/udp.h>
 #include <net/udp_tunnel.h>
@@ -3259,8 +3258,10 @@ static int __init amt_init(void)
 		goto unregister_notifier;
 
 	amt_wq = alloc_workqueue("amt", WQ_UNBOUND, 1);
-	if (!amt_wq)
+	if (!amt_wq) {
+		err = -ENOMEM;
 		goto rtnl_unregister;
+	}
 
 	spin_lock_init(&source_gc_lock);
 	spin_lock_bh(&source_gc_lock);
