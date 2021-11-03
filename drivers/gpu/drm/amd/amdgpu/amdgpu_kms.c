@@ -164,8 +164,10 @@ int amdgpu_driver_load_kms(struct amdgpu_device *adev, unsigned long flags)
 	    !pci_is_thunderbolt_attached(to_pci_dev(dev->dev)))
 		flags |= AMD_IS_PX;
 
-	parent = pci_upstream_bridge(adev->pdev);
-	adev->has_pr3 = parent ? pci_pr3_present(parent) : false;
+	if (!(flags & AMD_IS_APU)) {
+		parent = pci_upstream_bridge(adev->pdev);
+		adev->has_pr3 = parent ? pci_pr3_present(parent) : false;
+	}
 
 	/* amdgpu_device_init should report only fatal error
 	 * like memory allocation failure or iomapping failure,
@@ -1041,6 +1043,22 @@ int amdgpu_info_ioctl(struct drm_device *dev, void *data, struct drm_file *filp)
 			}
 			ui32 /= 100;
 			break;
+		case AMDGPU_INFO_SENSOR_PROFILE_MODE_ACTIVE: {
+			const struct amd_pm_funcs *pp_funcs = adev->powerplay.pp_funcs;
+			enum amd_dpm_forced_level level;
+
+			if (pp_funcs->get_performance_level)
+				level = amdgpu_dpm_get_performance_level(adev);
+			else
+				level = adev->pm.dpm.forced_level;
+
+			if ((level == AMD_DPM_FORCED_LEVEL_PROFILE_STANDARD) ||
+			    (level == AMD_DPM_FORCED_LEVEL_PROFILE_MIN_SCLK) ||
+			    (level == AMD_DPM_FORCED_LEVEL_PROFILE_MIN_MCLK) ||
+			    (level == AMD_DPM_FORCED_LEVEL_PROFILE_PEAK))
+				ui32 = 1;
+		}
+			break;
 		default:
 			DRM_DEBUG_KMS("Invalid request %d\n",
 				      info->sensor_info.type);
@@ -1423,6 +1441,8 @@ static int amdgpu_debugfs_firmware_info_show(struct seq_file *m, void *unused)
 	struct drm_amdgpu_info_firmware fw_info;
 	struct drm_amdgpu_query_fw query_fw;
 	struct atom_context *ctx = adev->mode_info.atom_context;
+	uint8_t smu_minor, smu_debug;
+	uint16_t smu_major;
 	int ret, i;
 
 	static const char *ta_fw_name[TA_FW_TYPE_MAX_INDEX] = {
@@ -1568,8 +1588,11 @@ static int amdgpu_debugfs_firmware_info_show(struct seq_file *m, void *unused)
 	ret = amdgpu_firmware_info(&fw_info, &query_fw, adev);
 	if (ret)
 		return ret;
-	seq_printf(m, "SMC feature version: %u, firmware version: 0x%08x\n",
-		   fw_info.feature, fw_info.ver);
+	smu_major = (fw_info.ver >> 16) & 0xffff;
+	smu_minor = (fw_info.ver >> 8) & 0xff;
+	smu_debug = (fw_info.ver >> 0) & 0xff;
+	seq_printf(m, "SMC feature version: %u, firmware version: 0x%08x (%d.%d.%d)\n",
+		   fw_info.feature, fw_info.ver, smu_major, smu_minor, smu_debug);
 
 	/* SDMA */
 	query_fw.fw_type = AMDGPU_INFO_FW_SDMA;
