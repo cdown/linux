@@ -2485,6 +2485,24 @@ static inline bool blk_mq_queue_enter(struct request_queue *q, struct bio *bio)
 	return true;
 }
 
+static inline struct request *blk_get_plug_request(struct request_queue *q,
+						   struct blk_plug *plug,
+						   struct bio *bio)
+{
+	struct request *rq;
+
+	if (plug && !rq_list_empty(plug->cached_rq)) {
+		rq = rq_list_peek(&plug->cached_rq);
+		if (rq->q == q) {
+			rq_qos_throttle(q, bio);
+			plug->cached_rq = rq_list_next(rq);
+			INIT_LIST_HEAD(&rq->queuelist);
+			return rq;
+		}
+	}
+	return NULL;
+}
+
 /**
  * blk_mq_submit_bio - Create and send a request to block device.
  * @bio: Bio pointer.
@@ -2523,11 +2541,8 @@ void blk_mq_submit_bio(struct bio *bio)
 	}
 
 	plug = blk_mq_plug(q, bio);
-	if (plug && plug->cached_rq) {
-		rq = rq_list_pop(&plug->cached_rq);
-		INIT_LIST_HEAD(&rq->queuelist);
-		rq_qos_throttle(q, bio);
-	} else {
+	rq = blk_get_plug_request(q, plug, bio);
+	if (!rq) {
 		struct blk_mq_alloc_data data = {
 			.q		= q,
 			.nr_tags	= 1,
