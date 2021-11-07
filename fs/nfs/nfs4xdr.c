@@ -3168,20 +3168,23 @@ static int decode_opaque_inline(struct xdr_stream *xdr, unsigned int *len, char 
 
 static int decode_compound_hdr(struct xdr_stream *xdr, struct compound_hdr *hdr)
 {
-	__be32 *p;
+	ssize_t ret;
+	void *ptr;
+	u32 tmp;
 
-	p = xdr_inline_decode(xdr, 8);
-	if (unlikely(!p))
+	if (xdr_stream_decode_u32(xdr, &tmp) < 0)
 		return -EIO;
-	hdr->status = be32_to_cpup(p++);
-	hdr->taglen = be32_to_cpup(p);
+	hdr->status = tmp;
 
-	p = xdr_inline_decode(xdr, hdr->taglen + 4);
-	if (unlikely(!p))
+	ret = xdr_stream_decode_opaque_inline(xdr, &ptr, NFS4_OPAQUE_LIMIT);
+	if (ret < 0)
 		return -EIO;
-	hdr->tag = (char *)p;
-	p += XDR_QUADLEN(hdr->taglen);
-	hdr->nops = be32_to_cpup(p);
+	hdr->taglen = ret;
+	hdr->tag = ptr;
+
+	if (xdr_stream_decode_u32(xdr, &tmp) < 0)
+		return -EIO;
+	hdr->nops = tmp;
 	if (unlikely(hdr->nops < 1))
 		return nfs4_stat_to_errno(hdr->status);
 	return 0;
@@ -5572,20 +5575,9 @@ static int decode_secinfo_no_name(struct xdr_stream *xdr, struct nfs4_secinfo_re
 
 static int decode_op_map(struct xdr_stream *xdr, struct nfs4_op_map *op_map)
 {
-	__be32 *p;
-	uint32_t bitmap_words;
-	unsigned int i;
-
-	p = xdr_inline_decode(xdr, 4);
-	if (!p)
+	if (xdr_stream_decode_uint32_array(xdr, op_map->u.words,
+					   ARRAY_SIZE(op_map->u.words)) < 0)
 		return -EIO;
-	bitmap_words = be32_to_cpup(p++);
-	if (bitmap_words > NFS4_OP_MAP_NUM_WORDS)
-		return -EIO;
-	p = xdr_inline_decode(xdr, 4 * bitmap_words);
-	for (i = 0; i < bitmap_words; i++)
-		op_map->u.words[i] = be32_to_cpup(p++);
-
 	return 0;
 }
 
