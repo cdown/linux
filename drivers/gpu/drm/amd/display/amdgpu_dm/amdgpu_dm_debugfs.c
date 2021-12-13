@@ -3346,8 +3346,6 @@ void dtn_debugfs_init(struct amdgpu_device *adev)
 			    adev, &mst_topo_fops);
 	debugfs_create_file("amdgpu_dm_dtn_log", 0644, root, adev,
 			    &dtn_log_fops);
-	debugfs_create_file("amdgpu_dm_dp_set_mst_en_for_sst", 0644, root, adev,
-				&dp_set_mst_en_for_sst_ops);
 
 	debugfs_create_file_unsafe("amdgpu_dm_visual_confirm", 0644, root, adev,
 				   &visual_confirm_fops);
