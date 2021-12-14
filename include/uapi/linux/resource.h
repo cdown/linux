@@ -76,7 +76,7 @@ struct rlimit64 {
  * The first two don't need much. The latter will take as
  * much as it can get. 8MB is a reasonably sane default.
  */
-#define MLOCK_LIMIT	(8*1024*1024)
+#define MLOCK_LIMIT	((PAGE_SIZE > 8*1024*1024) ? PAGE_SIZE : 8*1024*1024)
 
 /*
  * Due to binary compatibility, the actual resource numbers
