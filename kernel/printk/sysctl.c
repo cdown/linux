@@ -20,13 +20,31 @@ static int proc_dointvec_minmax_sysadmin(struct ctl_table *table, int write,
 	return proc_dointvec_minmax(table, write, buffer, lenp, ppos);
 }
 
+static int printk_sysctl_deprecated(struct ctl_table *table, int write,
+				    void __user *buffer, size_t *lenp,
+				    loff_t *ppos)
+{
+	if (write) {
+		/*
+		 * KERN_EMERG because otherwise people with a highly
+		 * restrictive kernel.printk may not get warned despite setting
+		 * it
+		 */
+		pr_emerg_ratelimited(
+			"printk: The %s sysctl is deprecated and will be removed soon. Use kernel.printk.console_loglevel, kernel.printk.default_message_loglevel, or kernel.printk.minimum_console_loglevel instead.",
+			table->procname
+		);
+	}
+	return proc_dointvec(table, write, buffer, lenp, ppos);
+}
+
 static struct ctl_table printk_sysctls[] = {
 	{
 		.procname	= "printk",
 		.data		= &console_loglevel,
 		.maxlen		= 4*sizeof(int),
 		.mode		= 0644,
-		.proc_handler	= proc_dointvec,
+		.proc_handler	= printk_sysctl_deprecated,
 	},
 	{
 		.procname	= "printk_ratelimit",

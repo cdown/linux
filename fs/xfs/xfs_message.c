@@ -48,7 +48,19 @@ void func(const struct xfs_mount *mp, const char *fmt, ...)	\
 		xfs_stack_trace();				\
 }								\
 
-define_xfs_printk_level(xfs_emerg, KERN_EMERG);
+#define xfs_printk_index_emit(level, fmt, ...) \
+	printk_index_subsys_emit("XFS: ", NULL, fmt)
+
+#define xfs_printk_index_wrap(_p_func, mp, fmt) \
+	({  \
+		xfs_printk_index_emit(level, fmt); \
+		_p_func(mp, fmt);\
+	})
+
+define_xfs_printk_level(_xfs_emerg, KERN_EMERG);
+#define xfs_emerg(mp, fmt, ...) \
+	xfs_printk_index_wrap(_xfs_emerg, mp, fmt, ##__VA_ARGS__)
+
 define_xfs_printk_level(xfs_alert, KERN_ALERT);
 define_xfs_printk_level(xfs_crit, KERN_CRIT);
 define_xfs_printk_level(xfs_err, KERN_ERR);
