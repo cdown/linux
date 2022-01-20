@@ -7,9 +7,12 @@
 #include <linux/printk.h>
 #include <linux/capability.h>
 #include <linux/ratelimit.h>
+#include <linux/console.h>
 #include "internal.h"
 
 static const int ten_thousand = 10000;
+static const int min_loglevel = LOGLEVEL_EMERG;
+static const int max_loglevel = LOGLEVEL_DEBUG;
 
 static int proc_dointvec_minmax_sysadmin(struct ctl_table *table, int write,
 				void *buffer, size_t *lenp, loff_t *ppos)
@@ -20,13 +23,46 @@ static int proc_dointvec_minmax_sysadmin(struct ctl_table *table, int write,
 	return proc_dointvec_minmax(table, write, buffer, lenp, ppos);
 }
 
+static int printk_sysctl_deprecated(struct ctl_table *table, int write,
+				    void __user *buffer, size_t *lenp,
+				    loff_t *ppos)
+{
+	int res = proc_dointvec(table, write, buffer, lenp, ppos);
+
+	if (write) {
+		pr_warn_ratelimited(
+			"printk: The kernel.printk sysctl is deprecated and will be removed soon. Use kernel.force_console_loglevel, kernel.default_message_loglevel, or kernel.minimum_console_loglevel instead.\n"
+		);
+
+		/*
+		 * If you specify kernel.printk, you're using the old API, and
+		 * we should just force all consoles to the value specified.
+		 * This is how it was before per-console levels were
+		 * implemented.
+		 */
+		console_force_loglevel();
+	}
+
+	return res;
+}
+
+static int printk_force_console_loglevel(struct ctl_table *table, int write,
+					 void __user *buffer, size_t *lenp,
+					 loff_t *ppos)
+{
+	int res = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
+	if (write)
+		console_force_loglevel();
+	return res;
+}
+
 static struct ctl_table printk_sysctls[] = {
 	{
 		.procname	= "printk",
 		.data		= &console_loglevel,
 		.maxlen		= 4*sizeof(int),
 		.mode		= 0644,
-		.proc_handler	= proc_dointvec,
+		.proc_handler	= printk_sysctl_deprecated,
 	},
 	{
 		.procname	= "printk_ratelimit",
@@ -75,6 +111,33 @@ static struct ctl_table printk_sysctls[] = {
 		.proc_handler	= proc_dointvec_minmax_sysadmin,
 		.extra1		= SYSCTL_ZERO,
 		.extra2		= SYSCTL_TWO,
+	},
+	{
+		.procname	= "force_console_loglevel",
+		.data		= &console_loglevel,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= printk_force_console_loglevel,
+		.extra1		= (void *)&min_loglevel,
+		.extra2		= (void *)&max_loglevel,
+	},
+	{
+		.procname	= "default_message_loglevel",
+		.data		= &default_message_loglevel,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= (void *)&min_loglevel,
+		.extra2		= (void *)&max_loglevel,
+	},
+	{
+		.procname	= "minimum_console_loglevel",
+		.data		= &minimum_console_loglevel,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= (void *)&min_loglevel,
+		.extra2		= (void *)&max_loglevel,
 	},
 	{}
 };
