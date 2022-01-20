@@ -139,7 +139,24 @@ static inline int con_debug_leave(void)
 #define CON_ANYTIME	(16) /* Safe to call when cpu is offline */
 #define CON_BRL		(32) /* Used for a braille device */
 #define CON_EXTENDED	(64) /* Use the extended output format a la /dev/kmsg */
-#define CON_LEVEL	(128) /* Level explicitly set on command line */
+
+/*
+ * The loglevel for a console can be set in many places:
+ *
+ * 1. Global at compile time (CONFIG_CONSOLE_LOGLEVEL_{DEFAULT,QUIET})
+ * 2. Global on kernel command line (quiet, loglevel=, ignore_loglevel)
+ * 3. Console-specific on kernel command line (console=.../N)
+ * 4. Console-specific at runtime (/sys/class/console/.../loglevel)
+ * 5. Global at runtime, without touching console-specific values
+ *    (sysctls kernel.default_console_loglevel, kernel.printk (deprecated),
+ *    /sys/class/console/default_loglevel)
+ * 6. Global at runtime, touching all consoles regardless of current source
+ *    (panic(), sysrq, etc)
+ *
+ * Cases 3 and 4 result in this flag being set. All others result in this flag
+ * being unset.
+ */
+#define CON_LOCALLEVEL	(128) /* Level set locally for this console */
 
 struct console;
 
