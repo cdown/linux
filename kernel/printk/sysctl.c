@@ -10,6 +10,8 @@
 #include "internal.h"
 
 static const int ten_thousand = 10000;
+static const int min_loglevel = LOGLEVEL_EMERG;
+static const int max_loglevel = LOGLEVEL_DEBUG;
 
 static int proc_dointvec_minmax_sysadmin(struct ctl_table *table, int write,
 				void __user *buffer, size_t *lenp, loff_t *ppos)
@@ -20,13 +22,25 @@ static int proc_dointvec_minmax_sysadmin(struct ctl_table *table, int write,
 	return proc_dointvec_minmax(table, write, buffer, lenp, ppos);
 }
 
+static int printk_sysctl_deprecated(struct ctl_table *table, int write,
+				    void __user *buffer, size_t *lenp,
+				    loff_t *ppos)
+{
+	if (write) {
+		pr_warn_ratelimited(
+			"printk: The kernel.printk sysctl is deprecated and will be removed soon. Use kernel.printk_console_loglevel, kernel.printk_default_message_loglevel, or kernel.printk_minimum_console_loglevel instead.\n"
+		);
+	}
+	return proc_dointvec(table, write, buffer, lenp, ppos);
+}
+
 static struct ctl_table printk_sysctls[] = {
 	{
 		.procname	= "printk",
 		.data		= &console_loglevel,
 		.maxlen		= 4*sizeof(int),
 		.mode		= 0644,
-		.proc_handler	= proc_dointvec,
+		.proc_handler	= printk_sysctl_deprecated,
 	},
 	{
 		.procname	= "printk_ratelimit",
@@ -75,6 +89,35 @@ static struct ctl_table printk_sysctls[] = {
 		.proc_handler	= proc_dointvec_minmax_sysadmin,
 		.extra1		= SYSCTL_ZERO,
 		.extra2		= SYSCTL_TWO,
+	},
+
+	/* Once kernel.printk is gone, move these into kernel/printk */
+	{
+		.procname	= "printk_console_loglevel",
+		.data		= &console_loglevel,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= (void *)&min_loglevel,
+		.extra2		= (void *)&max_loglevel,
+	},
+	{
+		.procname	= "printk_default_message_loglevel",
+		.data		= &default_message_loglevel,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= (void *)&min_loglevel,
+		.extra2		= (void *)&max_loglevel,
+	},
+	{
+		.procname	= "printk_minimum_console_loglevel",
+		.data		= &minimum_console_loglevel,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= (void *)&min_loglevel,
+		.extra2		= (void *)&max_loglevel,
 	},
 	{}
 };
