@@ -2347,8 +2347,8 @@ bool is_static_console(struct console *con)
 EXPORT_SYMBOL(is_static_console);
 
 static int __add_preferred_console(char *name, int idx, int loglevel,
-				   char *options, char *brl_options,
-				   bool user_specified)
+				   bool loglevel_set, char *options,
+				   char *brl_options, bool user_specified)
 {
 	struct console_cmdline *c;
 	int i;
@@ -2378,6 +2378,7 @@ static int __add_preferred_console(char *name, int idx, int loglevel,
 	braille_set_options(c, brl_options);
 
 	c->loglevel = loglevel;
+	c->loglevel_set = loglevel_set;
 	c->index = idx;
 	return 0;
 }
@@ -2401,6 +2402,7 @@ static int __init console_setup(char *str)
 	char buf[sizeof(console_cmdline[0].name) + 4]; /* 4 for "ttyS" */
 	char *s, *options, *slevel, *brl_options = NULL;
 	int loglevel = LOGLEVEL_EMERG;
+	bool loglevel_set = false;
 	int idx;
 
 	/*
@@ -2409,7 +2411,8 @@ static int __init console_setup(char *str)
 	 * for exactly this purpose.
 	 */
 	if (str[0] == 0 || strcmp(str, "null") == 0) {
-		__add_preferred_console("ttynull", 0, 0, NULL, NULL, true);
+		__add_preferred_console("ttynull", 0, 0, true, NULL, NULL,
+					true);
 		return 1;
 	}
 
@@ -2435,6 +2438,8 @@ static int __init console_setup(char *str)
 		*(slevel++) = 0;
 		if (kstrtoint(slevel, 10, &loglevel))
 			loglevel = LOGLEVEL_EMERG;
+		else
+			loglevel_set = true;
 	}
 
 #ifdef __sparc__
@@ -2449,7 +2454,8 @@ static int __init console_setup(char *str)
 	idx = simple_strtoul(s, NULL, 10);
 	*s = 0;
 
-	__add_preferred_console(buf, idx, loglevel, options, brl_options, true);
+	__add_preferred_console(buf, idx, loglevel, loglevel_set, options,
+				brl_options, true);
 	console_set_on_cmdline = 1;
 	return 1;
 }
@@ -2470,7 +2476,7 @@ __setup("console=", console_setup);
  */
 int add_preferred_console(char *name, int idx, char *options)
 {
-	return __add_preferred_console(name, idx, LOGLEVEL_EMERG, options,
+	return __add_preferred_console(name, idx, LOGLEVEL_EMERG, true, options,
 				       NULL, false);
 }
 
@@ -2896,13 +2902,7 @@ static ssize_t loglevel_show(struct device *dev, struct device_attribute *attr,
 			     char *buf)
 {
 	struct console *con = container_of(dev, struct console, dev);
-
-	/*
-	 * We only write either on new console (in which case loglevel_show
-	 * cannot be called yet) or from loglevel_store, so it's enough to do
-	 * READ_ONCE() without holding console_lock().
-	 */
-	return sprintf(buf, "%d\n", READ_ONCE(con->level));
+	return sprintf(buf, "%d\n", con->level);
 }
 
 static ssize_t loglevel_store(struct device *dev, struct device_attribute *attr,
@@ -2925,29 +2925,37 @@ static ssize_t loglevel_store(struct device *dev, struct device_attribute *attr,
 	if (tmp < minimum_console_loglevel)
 		tmp = minimum_console_loglevel;
 
-	WRITE_ONCE(con->level, tmp);
+	con->level = tmp;
+	con->flags |= CON_LOCALLEVEL;
+
 	return size;
 }
 
 static DEVICE_ATTR_RW(loglevel);
 
+static ssize_t loglevel_source_show(struct device *dev,
+				    struct device_attribute *attr,
+				    char *buf)
+{
+	struct console *con = container_of(dev, struct console, dev);
+	return sprintf(buf, "%s\n",
+		       con->flags & CON_LOCALLEVEL ? "local" : "global");
+}
+
+static DEVICE_ATTR_RO(loglevel_source);
+
 static ssize_t enabled_show(struct device *dev, struct device_attribute *attr,
 			    char *buf)
 {
 	struct console *con = container_of(dev, struct console, dev);
-	ssize_t ret;
-
-	console_lock();
-	ret = sprintf(buf, "%d\n", !!(con->flags & CON_ENABLED));
-	console_unlock();
-
-	return ret;
+	return sprintf(buf, "%d\n", !!(con->flags & CON_ENABLED));
 }
 
 static DEVICE_ATTR_RO(enabled);
 
 static struct attribute *console_sysfs_attrs[] = {
 	&dev_attr_loglevel.attr,
+	&dev_attr_loglevel_source.attr,
 	&dev_attr_enabled.attr,
 	NULL,
 };
@@ -3048,7 +3056,8 @@ static int try_enable_preferred_console(struct console *newcon,
 				newcon->index = c->index;
 
 			newcon->level = c->loglevel;
-			newcon->flags |= CON_LEVEL;
+			if (c->loglevel_set)
+				newcon->flags |= CON_LOCALLEVEL;
 
 			if (_braille_register_console(newcon, c))
 				return 0;
@@ -3177,7 +3186,7 @@ void register_console(struct console *newcon)
 	}
 
 	/* Without any further configuration, no messages go through. */
-	if (!(newcon->flags & CON_LEVEL))
+	if (!(newcon->flags & CON_LOCALLEVEL))
 		newcon->level = LOGLEVEL_EMERG;
 
 	/*
