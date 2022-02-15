@@ -195,8 +195,8 @@ __ioremap_caller(resource_size_t phys_addr, unsigned long size,
 		return NULL;
 
 	if (!phys_addr_valid(phys_addr)) {
-		printk(KERN_WARNING "ioremap: invalid physical address %llx\n",
-		       (unsigned long long)phys_addr);
+		pr_warn("%pS: ioremap: invalid physical address %llx\n",
+			caller, (unsigned long long)phys_addr);
 		WARN_ON_ONCE(1);
 		return NULL;
 	}
@@ -207,8 +207,8 @@ __ioremap_caller(resource_size_t phys_addr, unsigned long size,
 	 * Don't allow anybody to remap normal RAM that we're using..
 	 */
 	if (io_desc.flags & IORES_MAP_SYSTEM_RAM) {
-		WARN_ONCE(1, "ioremap on RAM at %pa - %pa\n",
-			  &phys_addr, &last_addr);
+		WARN_ONCE(1, "%pS: ioremap on RAM at %pa - %pa\n",
+			  caller, &phys_addr, &last_addr);
 		return NULL;
 	}
 
@@ -222,14 +222,16 @@ __ioremap_caller(resource_size_t phys_addr, unsigned long size,
 	retval = memtype_reserve(phys_addr, (u64)phys_addr + size,
 						pcm, &new_pcm);
 	if (retval) {
-		printk(KERN_ERR "ioremap memtype_reserve failed %d\n", retval);
+		pr_err("%pS: ioremap memtype_reserve failed %d\n",
+		       caller, retval);
 		return NULL;
 	}
 
 	if (pcm != new_pcm) {
 		if (!is_new_memtype_allowed(phys_addr, size, pcm, new_pcm)) {
-			printk(KERN_ERR
-		"ioremap error for 0x%llx-0x%llx, requested 0x%x, got 0x%x\n",
+			pr_err(
+		"%pS: ioremap error for 0x%llx-0x%llx, requested 0x%x, got 0x%x\n",
+				caller,
 				(unsigned long long)phys_addr,
 				(unsigned long long)(phys_addr + size),
 				pcm, new_pcm);
@@ -292,7 +294,7 @@ __ioremap_caller(resource_size_t phys_addr, unsigned long size,
 	 * tree.
 	 */
 	if (iomem_map_sanity_check(unaligned_phys_addr, unaligned_size))
-		pr_warn("caller %pS mapping multiple BARs\n", caller);
+		pr_warn("%pS: mapping multiple BARs\n", caller);
 
 	return ret_addr;
 err_free_area:
