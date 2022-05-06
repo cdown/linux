@@ -61,6 +61,9 @@
 #include "braille.h"
 #include "internal.h"
 
+#define pr_refcount(dev) \
+	pr_err("refcount at %s:%d: %d\n", __func__, __LINE__, refcount_read(&((dev)->kobj.kref.refcount)));
+
 int console_printk[4] = {
 	CONSOLE_LOGLEVEL_DEFAULT,	/* console_loglevel */
 	MESSAGE_LOGLEVEL_DEFAULT,	/* default_message_loglevel */
@@ -3022,6 +3025,7 @@ static void console_refdev_release(struct device *dev)
 {
 	/* TODO: make sure we don't allow the console to be unregistered before
 	 * refcount is 0 */
+	pr_refcount(dev);
 	device_del(dev);
 }
 
@@ -3038,12 +3042,16 @@ static void console_register_device(struct console *new)
 	if (IS_ERR(console_class))
 		return;
 
+	pr_refcount(&new->refdev);
+
 	device_initialize(&new->refdev);
+	pr_refcount(&new->refdev);
 	dev_set_name(&new->refdev, "%s", new->name);
 	new->refdev.release = console_refdev_release;
 	new->refdev.class = console_class;
 	if (WARN_ON(device_add(&new->refdev)))
 		put_device(&new->refdev);
+	pr_refcount(&new->refdev);
 }
 
 /*
@@ -3324,6 +3332,7 @@ int unregister_console(struct console *console)
 		console_drivers->flags |= CON_CONSDEV;
 
 	console->flags &= ~CON_ENABLED;
+	pr_refcount(&console->refdev);
 	put_device(&console->refdev);
 	console_unlock();
 	console_sysfs_notify();
