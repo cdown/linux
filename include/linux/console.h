@@ -15,6 +15,7 @@
 #define _LINUX_CONSOLE_H_ 1
 
 #include <linux/atomic.h>
+#include <linux/device.h>
 #include <linux/types.h>
 
 struct vc_data;
@@ -138,6 +139,12 @@ static inline int con_debug_leave(void)
 #define CON_EXTENDED	(64) /* Use the extended output format a la /dev/kmsg */
 #define CON_LOCALLEVEL	(128) /* Level explicitly set on command line */
 
+/*
+ * Console has active class device, so may have active readers/writers from
+ * /sys/class hierarchy.
+ */
+#define CON_CLASSDEV_ACTIVE	(256)
+
 struct console {
 	char	name[16];
 	void	(*write)(struct console *, const char *, unsigned);
@@ -155,6 +162,7 @@ struct console {
 	void	*data;
 	struct	 console *next;
 	int	level;
+	struct	device classdev;
 };
 
 /*
