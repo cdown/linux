@@ -15,6 +15,7 @@
 #define _LINUX_CONSOLE_H_ 1
 
 #include <linux/atomic.h>
+#include <linux/device.h>
 #include <linux/types.h>
 
 struct vc_data;
@@ -155,6 +156,7 @@ struct console {
 	void	*data;
 	struct	 console *next;
 	int	level;
+	struct	device refdev;
 };
 
 /*

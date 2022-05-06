@@ -44,6 +44,7 @@
 #include <linux/irq_work.h>
 #include <linux/ctype.h>
 #include <linux/uio.h>
+#include <linux/device.h>
 #include <linux/sched/clock.h>
 #include <linux/sched/debug.h>
 #include <linux/sched/task_stack.h>
@@ -86,6 +87,9 @@ EXPORT_SYMBOL(oops_in_progress);
 static DEFINE_SEMAPHORE(console_sem);
 struct console *console_drivers;
 EXPORT_SYMBOL_GPL(console_drivers);
+
+static int printk_late_done;
+static struct class *console_class;
 
 /*
  * System may need to suppress printk message under certain
@@ -2944,6 +2948,35 @@ static int __init keep_bootcon_setup(char *str)
 
 early_param("keep_bootcon", keep_bootcon_setup);
 
+static void console_refdev_release(struct device *dev)
+{
+	/*
+	 * `struct console' is statically allocated (or at the very least
+	 * managed outside of our lifecycle), nothing to do.
+	 */
+}
+
+static void console_register_device(struct console *new)
+{
+	/*
+	 * We might be called from register_console() before the class is
+	 * registered. If that happens, we'll take care of it in
+	 * printk_late_init.
+	 */
+	if (!printk_late_done)
+		return;
+
+	if (IS_ERR(console_class))
+		return;
+
+	device_initialize(&new->refdev);
+	dev_set_name(&new->refdev, "%s", new->name);
+	new->refdev.release = console_refdev_release;
+	new->refdev.class = console_class;
+	if (WARN_ON(device_add(&new->refdev)))
+		put_device(&new->refdev);
+}
+
 /*
  * This is called by register_console() to try to match
  * the newly registered console with any of the ones selected
@@ -3150,6 +3183,7 @@ void register_console(struct console *newcon)
 		console_seq = syslog_seq;
 		mutex_unlock(&syslog_lock);
 	}
+	console_register_device(newcon);
 	console_unlock();
 	console_sysfs_notify();
 
@@ -3220,6 +3254,7 @@ int unregister_console(struct console *console)
 		console_drivers->flags |= CON_CONSDEV;
 
 	console->flags &= ~CON_ENABLED;
+	device_unregister(&console->refdev);
 	console_unlock();
 	console_sysfs_notify();
 
@@ -3279,6 +3314,10 @@ void __init console_init(void)
  * To mitigate this problem somewhat, only unregister consoles whose memory
  * intersects with the init section. Note that all other boot consoles will
  * get unregistered when the real preferred console is registered.
+ *
+ * Early consoles will also have been registered before we had the
+ * infrastructure to put them into /sys/class/console, so make sure they get
+ * set up now that we're ready.
  */
 static int __init printk_late_init(void)
 {
@@ -3312,6 +3351,14 @@ static int __init printk_late_init(void)
 					console_cpu_notify, NULL);
 	WARN_ON(ret < 0);
 	printk_sysctl_init();
+
+	console_class = class_create(THIS_MODULE, "console");
+	WARN_ON(IS_ERR(console_class));
+
+	printk_late_done = 1;
+	for_each_console(con)
+		console_register_device(con);
+
 	return 0;
 }
 late_initcall(printk_late_init);
