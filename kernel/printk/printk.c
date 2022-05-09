@@ -3020,10 +3020,15 @@ ATTRIBUTE_GROUPS(console_sysfs);
 
 static void console_refdev_release(struct device *dev)
 {
+	struct console *con = container_of(dev, struct console, refdev);
+
 	/*
-	 * `struct console' is statically allocated (or at the very least
-	 * managed outside of our lifecycle), nothing to do.
+	 * `struct console' objects are statically allocated (or at the very
+	 * least managed outside of our lifecycle), nothing to do. Just set a
+	 * flag so that we know we are no longer waiting for anyone and can
+	 * return control in unregister_console().
 	 */
+	con->flags &= ~CON_REFDEV_ACTIVE;
 }
 
 static void console_register_device(struct console *new)
@@ -3039,6 +3044,7 @@ static void console_register_device(struct console *new)
 	if (IS_ERR(console_class))
 		return;
 
+	new->flags |= CON_REFDEV_ACTIVE;
 	device_initialize(&new->refdev);
 	dev_set_name(&new->refdev, "%s", new->name);
 	new->refdev.release = console_refdev_release;
@@ -3349,6 +3355,14 @@ int unregister_console(struct console *console)
 out_disable_unlock:
 	console->flags &= ~CON_ENABLED;
 	console_unlock();
+
+	/*
+	 * Wait for all readers to stop, otherwise they might read from a
+	 * module which is going away. Once refdev is 0, CON_REFDEV_ACTIVE will
+	 * be unset in console_refdev_release.
+	 */
+	while (console->flags & CON_REFDEV_ACTIVE)
+		schedule_timeout_uninterruptible(1);
 
 	return res;
 }

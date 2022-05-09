@@ -156,6 +156,12 @@ static inline int con_debug_leave(void)
  */
 #define CON_LOCALLEVEL	(128) /* Level set locally for this console */
 
+/*
+ * Console has active class device, so may have active readers/writers from
+ * /sys/class hierarchy.
+ */
+#define CON_REFDEV_ACTIVE	(256)
+
 struct console {
 	char	name[16];
 	void	(*write)(struct console *, const char *, unsigned);
