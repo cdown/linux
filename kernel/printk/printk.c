@@ -3107,6 +3107,18 @@ static int try_enable_preferred_console(struct console *newcon,
 	return -ENOENT;
 }
 
+/*
+ * There's been an update to force_console_loglevel. Update all consoles to use
+ * it.
+ */
+void console_force_loglevel(void)
+{
+	struct console *con;
+
+	for_each_console(con)
+		WRITE_ONCE(con->level, READ_ONCE(console_loglevel));
+}
+
 /* Try to enable the console unconditionally */
 static void try_enable_default_console(struct console *newcon)
 {
