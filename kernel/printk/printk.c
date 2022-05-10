@@ -72,6 +72,9 @@ EXPORT_SYMBOL_GPL(console_printk);
 atomic_t ignore_console_lock_warning __read_mostly = ATOMIC_INIT(0);
 EXPORT_SYMBOL(ignore_console_lock_warning);
 
+#define pr_refcount(dev) \
+	pr_err("refcount for %s at %s:%s:%d: %d\n", dev_name(dev), __FILE__, __func__, __LINE__, refcount_read(&((dev)->kobj.kref.refcount)));
+
 /*
  * Low level drivers may need that to know if they can schedule in
  * their unblank() callback or not. So let's export it.
@@ -3022,6 +3025,8 @@ static void console_refdev_release(struct device *dev)
 {
 	struct console *con = container_of(dev, struct console, refdev);
 
+	pr_refcount(dev);
+
 	/*
 	 * `struct console' objects are statically allocated (or at the very
 	 * least managed outside of our lifecycle), nothing to do. Just set a
@@ -3046,11 +3051,13 @@ static void console_register_device(struct console *new)
 
 	new->flags |= CON_REFDEV_ACTIVE;
 	device_initialize(&new->refdev);
+	pr_refcount(&new->refdev);
 	dev_set_name(&new->refdev, "%s", new->name);
 	new->refdev.release = console_refdev_release;
 	new->refdev.class = console_class;
 	if (WARN_ON(device_add(&new->refdev)))
 		put_device(&new->refdev);
+	pr_refcount(&new->refdev);
 }
 
 /*
@@ -3273,6 +3280,7 @@ void register_console(struct console *newcon)
 		mutex_unlock(&syslog_lock);
 	}
 	console_register_device(newcon);
+	pr_refcount(&newcon->refdev);
 	console_unlock();
 	console_sysfs_notify();
 
@@ -3296,6 +3304,7 @@ void register_console(struct console *newcon)
 			if (con->flags & CON_BOOT)
 				unregister_console(con);
 	}
+	pr_refcount(&newcon->refdev);
 }
 EXPORT_SYMBOL(register_console);
 
@@ -3356,6 +3365,7 @@ out_disable_unlock:
 	console->flags &= ~CON_ENABLED;
 	console_unlock();
 
+	pr_refcount(&console->refdev);
 	/*
 	 * Wait for all readers to stop, otherwise they might read from a
 	 * module which is going away. Once refdev is 0, CON_REFDEV_ACTIVE will
@@ -3363,6 +3373,7 @@ out_disable_unlock:
 	 */
 	while (console->flags & CON_REFDEV_ACTIVE)
 		schedule_timeout_uninterruptible(1);
+	pr_refcount(&console->refdev);
 
 	return res;
 }
