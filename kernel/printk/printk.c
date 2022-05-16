@@ -1665,6 +1665,18 @@ int do_syslog(int type, char __user *buf, int len, int source)
 	if (error)
 		return error;
 
+	/*
+	 * This is the old, global API -- syslog() has no way to indicate which
+	 * console the changes are supposed to go to. If you want per-console
+	 * loglevel controls, then use the sysfs API.
+	 *
+	 * SYSLOG_ACTION_CONSOLE_{ON,OFF,LEVEL} emulate the old behaviour by
+	 * forcing all consoles to the specified level. Note that this means
+	 * you cannot reasonably mix using per-console loglevels and
+	 * syslog(SYSLOG_ACTION_CONSOLE_*), since this will override your
+	 * per-console loglevel settings.
+	 */
+
 	switch (type) {
 	case SYSLOG_ACTION_CLOSE:	/* Close log */
 		break;
@@ -1702,12 +1714,14 @@ int do_syslog(int type, char __user *buf, int len, int source)
 		if (saved_console_loglevel == LOGLEVEL_DEFAULT)
 			saved_console_loglevel = console_loglevel;
 		console_loglevel = minimum_console_loglevel;
+		console_force_loglevel();
 		break;
 	/* Enable logging to console */
 	case SYSLOG_ACTION_CONSOLE_ON:
 		if (saved_console_loglevel != LOGLEVEL_DEFAULT) {
 			console_loglevel = saved_console_loglevel;
 			saved_console_loglevel = LOGLEVEL_DEFAULT;
+			console_force_loglevel();
 		}
 		break;
 	/* Set level of messages printed to console */
@@ -1719,6 +1733,7 @@ int do_syslog(int type, char __user *buf, int len, int source)
 		console_loglevel = len;
 		/* Implicitly re-enable logging to console */
 		saved_console_loglevel = LOGLEVEL_DEFAULT;
+		console_force_loglevel();
 		break;
 	/* Number of chars in the log buffer */
 	case SYSLOG_ACTION_SIZE_UNREAD:
