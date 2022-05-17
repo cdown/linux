@@ -2498,7 +2498,7 @@ static int __add_preferred_console(char *name, int idx, int loglevel,
 	set_user_specified(c, user_specified);
 	braille_set_options(c, brl_options);
 
-	c->loglevel = loglevel;
+	c->level = loglevel;
 	c->flags = initial_flags;
 	c->index = idx;
 	return 0;
@@ -2557,9 +2557,7 @@ static int __init console_setup(char *str)
 	slevel = strchr(options ?: str, '/');
 	if (slevel) {
 		*(slevel++) = 0;
-		if (kstrtoint(slevel, 10, &loglevel))
-			loglevel = default_console_loglevel;
-		else {
+		if (kstrtoint(slevel, 10, &loglevel) == 0) {
 			loglevel = clamp(loglevel, LOGLEVEL_EMERG,
 					 LOGLEVEL_DEBUG + 1);
 			initial_flags |= CON_LOCALLEVEL;
@@ -3197,6 +3195,10 @@ static int try_enable_preferred_console(struct console *newcon,
 				continue;
 			if (newcon->index < 0)
 				newcon->index = c->index;
+
+			if (c->flags & CON_LOCALLEVEL)
+				newcon->level = c->level;
+			newcon->flags |= c->flags;
 
 			if (_braille_register_console(newcon, c))
 				return 0;
