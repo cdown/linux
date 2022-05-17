@@ -1262,9 +1262,13 @@ static int console_effective_loglevel(const struct console *con,
 			*source = LLS_MINIMUM;
 			return minimum_console_loglevel;
 		}
-
 		*source = LLS_LOCAL;
 		return con->level;
+	}
+
+	if (default_console_loglevel < minimum_console_loglevel) {
+		*source = LLS_MINIMUM;
+		return minimum_console_loglevel;
 	}
 
 	*source = LLS_GLOBAL;
