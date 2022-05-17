@@ -2516,7 +2516,7 @@ static int __init console_setup(char *str)
 	 * for exactly this purpose.
 	 */
 	if (str[0] == 0 || strcmp(str, "null") == 0) {
-		__add_preferred_console("ttynull", 0, 0, true, NULL, NULL,
+		__add_preferred_console("ttynull", 0, 0, 0, NULL, NULL,
 					true);
 		return 1;
 	}
@@ -2583,8 +2583,7 @@ __setup("console=", console_setup);
  */
 int add_preferred_console(char *name, int idx, char *options)
 {
-	return __add_preferred_console(name, idx, default_console_loglevel,
-				       true, options, NULL, false);
+	return __add_preferred_console(name, idx, 0, 0, options, NULL, false);
 }
 
 bool console_suspend_enabled = true;
