@@ -403,6 +403,28 @@ static struct latched_seq clear_seq = {
 	.val[1]		= 0,
 };
 
+/*
+ * When setting a console loglevel, we may not ultimately end up with that as
+ * the effective level due to forced_console_loglevel,
+ * minimum_console_loglevel, or ignore_loglevel. Always returning the level and
+ * effective source allows us to keep the logic in one place.
+ */
+enum loglevel_source {
+	LLS_GLOBAL,
+	LLS_LOCAL,
+	LLS_FORCED,
+	LLS_MINIMUM,
+	LLS_IGNORE_LOGLEVEL,
+};
+
+static const char *loglevel_source_names[] = {
+	[LLS_GLOBAL] = "global",
+	[LLS_LOCAL] = "local",
+	[LLS_FORCED] = "forced",
+	[LLS_MINIMUM] = "minimum",
+	[LLS_IGNORE_LOGLEVEL] = "ignore_loglevel",
+};
+
 #ifdef CONFIG_PRINTK_CALLER
 #define PREFIX_MAX		48
 #else
@@ -1206,14 +1228,53 @@ module_param(ignore_loglevel, bool, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(ignore_loglevel,
 		 "ignore loglevel setting (prints all kernel messages to the console)");
 
-static int effective_loglevel(struct console *con)
+/*
+ * Hierarchy of loglevel authority:
+ *
+ * 1. ignore_loglevel. Cannot be changed after boot. Overrides absolutely
+ *    everything since it's used to debug.
+ * 2. forced_console_loglevel. Optional, forces all consoles to the specified
+ *    loglevel.
+ * 3. minimum_console_loglevel. Always present, in effect if it's greater than
+ *    the console's local loglevel (or the global level if that isn't set).
+ * 4. con->level. Optional.
+ * 5. default_console_loglevel. Always present.
+ *
+ * Callers typically only need the level _or_ the source, but they're both
+ * emitted from this function so that the effective loglevel logic can be
+ * kept in one place.
+ */
+static int console_effective_loglevel(const struct console *con,
+				      enum loglevel_source *source)
 {
-	return max(console_loglevel, con ? con->level : default_console_loglevel);
+	if (ignore_loglevel) {
+		*source = LLS_IGNORE_LOGLEVEL;
+		return LOGLEVEL_DEBUG;
+	}
+
+	if (console_loglevel) {
+		*source = LLS_FORCED;
+		return console_loglevel;
+	}
+
+	if (con->flags & CON_LOCALLEVEL) {
+		if (con->level < minimum_console_loglevel) {
+			*source = LLS_MINIMUM;
+			return minimum_console_loglevel;
+		}
+
+		*source = LLS_LOCAL;
+		return con->level;
+	}
+
+	*source = LLS_GLOBAL;
+	return default_console_loglevel;
 }
 
 static bool suppress_message_printing(int level, struct console *con)
 {
-	return (!ignore_loglevel && level >= effective_loglevel(con));
+	enum loglevel_source source;
+	return level >= console_effective_loglevel(con, &source);
 }
 
 #ifdef CONFIG_BOOT_PRINTK_DELAY
@@ -2976,7 +3037,8 @@ static ssize_t loglevel_show(struct device *dev, struct device_attribute *attr,
 			     char *buf)
 {
 	struct console *con = container_of(dev, struct console, classdev);
-	return sprintf(buf, "%d\n", con->level);
+	enum loglevel_source source;
+	return sprintf(buf, "%d\n", console_effective_loglevel(con, &source));
 }
 
 static ssize_t loglevel_store(struct device *dev, struct device_attribute *attr,
@@ -2993,12 +3055,6 @@ static ssize_t loglevel_store(struct device *dev, struct device_attribute *attr,
 	if (tmp < LOGLEVEL_EMERG)
 		return -ERANGE;
 
-	/*
-	 * Mimic the behavior of /dev/kmsg with respect to minimum_loglevel.
-	 */
-	if (tmp < minimum_console_loglevel)
-		tmp = minimum_console_loglevel;
-
 	con->level = tmp;
 	con->flags |= CON_LOCALLEVEL;
 
@@ -3012,8 +3068,9 @@ static ssize_t loglevel_source_show(struct device *dev,
 				    char *buf)
 {
 	struct console *con = container_of(dev, struct console, classdev);
-	return sprintf(buf, "%s\n",
-		       con->flags & CON_LOCALLEVEL ? "local" : "global");
+	enum loglevel_source source;
+	console_effective_loglevel(con, &source);
+	return sprintf(buf, "%s\n", loglevel_source_names[source]);
 }
 
 static DEVICE_ATTR_RO(loglevel_source);
