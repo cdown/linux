@@ -263,6 +263,8 @@ int proc_dostring(struct ctl_table *table, int write,
 	if (write)
 		proc_first_pos_non_zero_ignore(ppos, table);
 
+	pr_crit("WAGWAN: %s\n", (char *)table->data);
+
 	return _proc_do_string(table->data, table->maxlen, write, buffer, lenp,
 			ppos);
 }

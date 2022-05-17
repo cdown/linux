@@ -37,7 +37,7 @@ static int printk_sysctl_deprecated(struct ctl_table *table, int write,
 	return res;
 }
 
-#define FORCE_CONSOLE_LOGLEVEL_MAX_LEN sizeof("unset") + 1
+#define FORCE_CONSOLE_LOGLEVEL_MAX_LEN sizeof("unset\n") + 1
 
 static int printk_force_console_loglevel(struct ctl_table *table, int write,
 					 void __user *buffer, size_t *lenp,
