@@ -37,7 +37,7 @@ static int printk_sysctl_deprecated(struct ctl_table *table, int write,
 	return res;
 }
 
-#define FORCE_CONSOLE_LOGLEVEL_MAX_LEN sizeof("off") + 1
+#define FORCE_CONSOLE_LOGLEVEL_MAX_LEN sizeof("unset") + 1
 
 static int printk_force_console_loglevel(struct ctl_table *table, int write,
 					 void __user *buffer, size_t *lenp,
@@ -53,7 +53,7 @@ static int printk_force_console_loglevel(struct ctl_table *table, int write,
 
 	if (!write) {
 		if (console_loglevel == LOGLEVEL_INVALID)
-			fake_table.data = "off";
+			fake_table.data = "unset";
 		else
 			snprintf(fake_table.data,
 				 FORCE_CONSOLE_LOGLEVEL_MAX_LEN, "%d",
@@ -62,12 +62,12 @@ static int printk_force_console_loglevel(struct ctl_table *table, int write,
 		return proc_dostring(&fake_table, write, buffer, lenp, ppos);
 	}
 
-	/* We accept either a loglevel, or "off". */
+	/* We accept either a loglevel, or "unset". */
 	ret = proc_dostring(&fake_table, write, buffer, lenp, ppos);
 	if (ret)
 		return ret;
 
-	if (strncmp(fake_table.data, "off", sizeof("off")) == 0)
+	if (strncmp(fake_table.data, "unset", sizeof("unset")) == 0)
 		console_loglevel = LOGLEVEL_INVALID;
 
 	ret = kstrtoint(fake_table.data, 10, &value);

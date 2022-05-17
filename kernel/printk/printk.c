@@ -3054,7 +3054,7 @@ static ssize_t loglevel_show(struct device *dev, struct device_attribute *attr,
 	if (con->flags & CON_LOCALLEVEL)
 		return sprintf(buf, "%d\n", con->level);
 	else
-		return sprintf(buf, "global\n");
+		return sprintf(buf, "unset\n");
 }
 
 static ssize_t loglevel_store(struct device *dev, struct device_attribute *attr,
@@ -3064,7 +3064,7 @@ static ssize_t loglevel_store(struct device *dev, struct device_attribute *attr,
 	ssize_t ret;
 	int tmp;
 
-	if (!strcmp(buf, "global") || !strcmp(buf, "global\n")) {
+	if (!strcmp(buf, "unset") || !strcmp(buf, "unset\n")) {
 		con->flags &= ~CON_LOCALLEVEL;
 		return size;
 	}
