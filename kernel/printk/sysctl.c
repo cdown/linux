@@ -44,33 +44,32 @@ static int printk_force_console_loglevel(struct ctl_table *table, int write,
 					 loff_t *ppos)
 {
 
-	char level[FORCE_CONSOLE_LOGLEVEL_MAX_LEN + 1];
-	struct ctl_table fake_table = {
-		.data = level,
-		.maxlen = sizeof(level) - 1,
-	};
+	char level[FORCE_CONSOLE_LOGLEVEL_MAX_LEN] = "unset";
+	struct ctl_table ltable = *table;
 	int ret, value;
 
+	ltable.data = level;
+	ltable.maxlen = sizeof(level) - 1;
+
 	if (!write) {
-		if (console_loglevel == LOGLEVEL_INVALID)
-			fake_table.data = "unset";
-		else
-			snprintf(fake_table.data,
+		if (console_loglevel != LOGLEVEL_INVALID)
+			snprintf(ltable.data,
 				 FORCE_CONSOLE_LOGLEVEL_MAX_LEN, "%d",
 				 console_loglevel);
-
-		return proc_dostring(&fake_table, write, buffer, lenp, ppos);
+		return proc_dostring(&ltable, write, buffer, lenp, ppos);
 	}
 
 	/* We accept either a loglevel, or "unset". */
-	ret = proc_dostring(&fake_table, write, buffer, lenp, ppos);
+	ret = proc_dostring(&ltable, write, buffer, lenp, ppos);
 	if (ret)
 		return ret;
 
-	if (strncmp(fake_table.data, "unset", sizeof("unset")) == 0)
+	if (strncmp(ltable.data, "unset", sizeof("unset")) == 0) {
 		console_loglevel = LOGLEVEL_INVALID;
+		return 0;
+	}
 
-	ret = kstrtoint(fake_table.data, 10, &value);
+	ret = kstrtoint(ltable.data, 10, &value);
 	if (ret)
 		return ret;
 
