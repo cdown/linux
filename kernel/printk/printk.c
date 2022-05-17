@@ -2456,7 +2456,7 @@ static void set_user_specified(struct console_cmdline *c, bool user_specified)
 }
 
 static int __add_preferred_console(char *name, int idx, int loglevel,
-				   bool loglevel_set, char *options,
+				   short initial_flags, char *options,
 				   char *brl_options, bool user_specified)
 {
 	struct console_cmdline *c;
@@ -2486,7 +2486,7 @@ static int __add_preferred_console(char *name, int idx, int loglevel,
 	braille_set_options(c, brl_options);
 
 	c->loglevel = loglevel;
-	c->loglevel_set = loglevel_set;
+	c->flags = initial_flags;
 	c->index = idx;
 	return 0;
 }
@@ -2510,7 +2510,7 @@ static int __init console_setup(char *str)
 	char buf[sizeof(console_cmdline[0].name) + 4]; /* 4 for "ttyS" */
 	char *s, *options, *slevel, *brl_options = NULL;
 	int loglevel = default_console_loglevel;
-	bool loglevel_set = false;
+	short initial_flags = 0;
 	int idx;
 
 	/*
@@ -2546,8 +2546,11 @@ static int __init console_setup(char *str)
 		*(slevel++) = 0;
 		if (kstrtoint(slevel, 10, &loglevel))
 			loglevel = default_console_loglevel;
-		else
-			loglevel_set = true;
+		else {
+			loglevel = clamp(loglevel, LOGLEVEL_EMERG,
+					 LOGLEVEL_DEBUG);
+			initial_flags |= CON_LOCALLEVEL;
+		}
 	}
 
 #ifdef __sparc__
@@ -2562,7 +2565,7 @@ static int __init console_setup(char *str)
 	idx = simple_strtoul(s, NULL, 10);
 	*s = 0;
 
-	__add_preferred_console(buf, idx, loglevel, loglevel_set, options,
+	__add_preferred_console(buf, idx, loglevel, initial_flags, options,
 				brl_options, true);
 	return 1;
 }
@@ -3048,11 +3051,16 @@ static ssize_t loglevel_store(struct device *dev, struct device_attribute *attr,
 	ssize_t ret;
 	int tmp;
 
+	if (!strcmp(buf, "global") || !strcmp(buf, "global\n")) {
+		con->flags &= ~CON_LOCALLEVEL;
+		return size;
+	}
+
 	ret = kstrtoint(buf, 10, &tmp);
 	if (ret < 0)
 		return ret;
 
-	if (tmp < LOGLEVEL_EMERG)
+	if (tmp < LOGLEVEL_EMERG || tmp > LOGLEVEL_DEBUG)
 		return -ERANGE;
 
 	con->level = tmp;
@@ -3163,10 +3171,6 @@ static int try_enable_preferred_console(struct console *newcon,
 				continue;
 			if (newcon->index < 0)
 				newcon->index = c->index;
-
-			newcon->level = c->loglevel;
-			if (c->loglevel_set)
-				newcon->flags |= CON_LOCALLEVEL;
 
 			if (_braille_register_console(newcon, c))
 				return 0;
@@ -3305,10 +3309,6 @@ void register_console(struct console *newcon)
 	    ((newcon->flags & (CON_CONSDEV | CON_BOOT)) == CON_CONSDEV)) {
 		newcon->flags &= ~CON_PRINTBUFFER;
 	}
-
-	/* Take the default log level if there's no other information */
-	if (!(newcon->flags & CON_LOCALLEVEL))
-		newcon->level = default_console_loglevel;
 
 	/*
 	 *	Put this console in the list - keep the
