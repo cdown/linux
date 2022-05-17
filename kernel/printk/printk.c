@@ -1807,8 +1807,6 @@ int do_syslog(int type, char __user *buf, int len, int source)
 		warn_on_local_loglevel();
 		if (len < 1 || len > 8)
 			return -EINVAL;
-		if (len < minimum_console_loglevel)
-			len = minimum_console_loglevel;
 		console_loglevel = len;
 		/* Implicitly re-enable logging to console */
 		saved_console_loglevel = LOGLEVEL_DEFAULT;
