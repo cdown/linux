@@ -29,31 +29,57 @@ static int printk_sysctl_deprecated(struct ctl_table *table, int write,
 {
 	int res = proc_dointvec(table, write, buffer, lenp, ppos);
 
-	if (write) {
+	if (write)
 		pr_warn_ratelimited(
 			"printk: The kernel.printk sysctl is deprecated and will be removed soon. Use kernel.force_console_loglevel, kernel.default_message_loglevel, kernel.minimum_console_loglevel, or kernel.default_console_loglevel instead.\n"
 		);
 
-		/*
-		 * If you specify kernel.printk, you're using the old API, and
-		 * we should just force all consoles to the value specified.
-		 * This is how it was before per-console levels were
-		 * implemented.
-		 */
-		console_force_loglevel();
-	}
-
 	return res;
 }
+
+#define FORCE_CONSOLE_LOGLEVEL_MAX_LEN sizeof("off") + 1
 
 static int printk_force_console_loglevel(struct ctl_table *table, int write,
 					 void __user *buffer, size_t *lenp,
 					 loff_t *ppos)
 {
-	int res = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
-	if (write)
-		console_force_loglevel();
-	return res;
+
+	char level[FORCE_CONSOLE_LOGLEVEL_MAX_LEN + 1];
+	struct ctl_table fake_table = {
+		.data = level,
+		.maxlen = sizeof(level) - 1,
+	};
+	int ret, value;
+
+	if (!write) {
+		if (console_loglevel == LOGLEVEL_INVALID)
+			fake_table.data = "off";
+		else
+			snprintf(fake_table.data,
+				 FORCE_CONSOLE_LOGLEVEL_MAX_LEN, "%d\n",
+				 console_loglevel);
+
+		return proc_dostring(&fake_table, write, buffer, lenp, ppos);
+	}
+
+	/* We accept either a loglevel, or "off". */
+	ret = proc_dostring(&fake_table, write, buffer, lenp, ppos);
+	if (ret)
+		return ret;
+
+	if (strncmp(fake_table.data, "off", sizeof("off")) == 0)
+		console_loglevel = LOGLEVEL_INVALID;
+
+	ret = kstrtoint(fake_table.data, 10, &value);
+	if (ret)
+		return ret;
+
+	if (value < LOGLEVEL_EMERG || value > LOGLEVEL_DEBUG)
+		return -ERANGE;
+
+	console_loglevel = value;
+
+	return 0;
 }
 
 static struct ctl_table printk_sysctls[] = {
@@ -114,12 +140,8 @@ static struct ctl_table printk_sysctls[] = {
 	},
 	{
 		.procname	= "force_console_loglevel",
-		.data		= &console_loglevel,
-		.maxlen		= sizeof(int),
 		.mode		= 0644,
 		.proc_handler	= printk_force_console_loglevel,
-		.extra1		= (void *)&min_loglevel,
-		.extra2		= (void *)&max_loglevel,
 	},
 	{
 		.procname	= "default_message_loglevel",

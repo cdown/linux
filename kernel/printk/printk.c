@@ -1252,7 +1252,7 @@ static int console_effective_loglevel(const struct console *con,
 		return LOGLEVEL_DEBUG;
 	}
 
-	if (console_loglevel) {
+	if (console_loglevel != LOGLEVEL_INVALID) {
 		*source = LLS_FORCED;
 		return console_loglevel;
 	}
@@ -1775,14 +1775,12 @@ int do_syslog(int type, char __user *buf, int len, int source)
 		if (saved_console_loglevel == LOGLEVEL_DEFAULT)
 			saved_console_loglevel = console_loglevel;
 		console_loglevel = minimum_console_loglevel;
-		console_force_loglevel();
 		break;
 	/* Enable logging to console */
 	case SYSLOG_ACTION_CONSOLE_ON:
 		if (saved_console_loglevel != LOGLEVEL_DEFAULT) {
 			console_loglevel = saved_console_loglevel;
 			saved_console_loglevel = LOGLEVEL_DEFAULT;
-			console_force_loglevel();
 		}
 		break;
 	/* Set level of messages printed to console */
@@ -1794,7 +1792,6 @@ int do_syslog(int type, char __user *buf, int len, int source)
 		console_loglevel = len;
 		/* Implicitly re-enable logging to console */
 		saved_console_loglevel = LOGLEVEL_DEFAULT;
-		console_force_loglevel();
 		break;
 	/* Number of chars in the log buffer */
 	case SYSLOG_ACTION_SIZE_UNREAD:
@@ -3194,18 +3191,6 @@ static int try_enable_preferred_console(struct console *newcon,
 		return 0;
 
 	return -ENOENT;
-}
-
-/*
- * There's been an update to force_console_loglevel. Update all consoles to use
- * it.
- */
-void console_force_loglevel(void)
-{
-	struct console *con;
-
-	for_each_console(con)
-		WRITE_ONCE(con->level, READ_ONCE(console_loglevel));
 }
 
 /* Try to enable the console unconditionally */
