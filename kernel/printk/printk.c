@@ -1715,6 +1715,18 @@ static void syslog_clear(void)
 	mutex_unlock(&syslog_lock);
 }
 
+/*
+ * Using the global klogctl/syslog API is unlikely to do what you want if you
+ * also have console specific loglevels. Warn about it.
+ */
+static void warn_on_local_loglevel(void)
+{
+	struct console *con;
+	for_each_console(con)
+		if (con->flags & CON_LOCALLEVEL)
+			pr_warn_ratelimited("Using global syslog(SYSLOG_ACTION_CONSOLE_*) with local console loglevels set. This overrides local console loglevels and is unlikely to be what you want.\n");
+}
+
 int do_syslog(int type, char __user *buf, int len, int source)
 {
 	struct printk_info info;
@@ -1772,12 +1784,14 @@ int do_syslog(int type, char __user *buf, int len, int source)
 		break;
 	/* Disable logging to console */
 	case SYSLOG_ACTION_CONSOLE_OFF:
+		warn_on_local_loglevel();
 		if (saved_console_loglevel == LOGLEVEL_DEFAULT)
 			saved_console_loglevel = console_loglevel;
 		console_loglevel = minimum_console_loglevel;
 		break;
 	/* Enable logging to console */
 	case SYSLOG_ACTION_CONSOLE_ON:
+		warn_on_local_loglevel();
 		if (saved_console_loglevel != LOGLEVEL_DEFAULT) {
 			console_loglevel = saved_console_loglevel;
 			saved_console_loglevel = LOGLEVEL_DEFAULT;
@@ -1785,6 +1799,7 @@ int do_syslog(int type, char __user *buf, int len, int source)
 		break;
 	/* Set level of messages printed to console */
 	case SYSLOG_ACTION_CONSOLE_LEVEL:
+		warn_on_local_loglevel();
 		if (len < 1 || len > 8)
 			return -EINVAL;
 		if (len < minimum_console_loglevel)

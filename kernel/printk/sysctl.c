@@ -56,7 +56,7 @@ static int printk_force_console_loglevel(struct ctl_table *table, int write,
 			fake_table.data = "off";
 		else
 			snprintf(fake_table.data,
-				 FORCE_CONSOLE_LOGLEVEL_MAX_LEN, "%d\n",
+				 FORCE_CONSOLE_LOGLEVEL_MAX_LEN, "%d",
 				 console_loglevel);
 
 		return proc_dostring(&fake_table, write, buffer, lenp, ppos);
