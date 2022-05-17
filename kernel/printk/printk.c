@@ -3036,8 +3036,10 @@ static ssize_t loglevel_show(struct device *dev, struct device_attribute *attr,
 			     char *buf)
 {
 	struct console *con = container_of(dev, struct console, classdev);
-	enum loglevel_source source;
-	return sprintf(buf, "%d\n", console_effective_loglevel(con, &source));
+	if (con->flags & CON_LOCALLEVEL)
+		return sprintf(buf, "%d\n", con->level);
+	else
+		return sprintf(buf, "global\n");
 }
 
 static ssize_t loglevel_store(struct device *dev, struct device_attribute *attr,
@@ -3079,6 +3081,17 @@ static ssize_t loglevel_source_show(struct device *dev,
 
 static DEVICE_ATTR_RO(loglevel_source);
 
+static ssize_t effective_loglevel_show(struct device *dev,
+				       struct device_attribute *attr,
+				       char *buf)
+{
+	struct console *con = container_of(dev, struct console, classdev);
+	enum loglevel_source source;
+	return sprintf(buf, "%d\n", console_effective_loglevel(con, &source));
+}
+
+static DEVICE_ATTR_RO(effective_loglevel);
+
 static ssize_t enabled_show(struct device *dev, struct device_attribute *attr,
 			    char *buf)
 {
@@ -3091,6 +3104,7 @@ static DEVICE_ATTR_RO(enabled);
 static struct attribute *console_sysfs_attrs[] = {
 	&dev_attr_loglevel.attr,
 	&dev_attr_loglevel_source.attr,
+	&dev_attr_effective_loglevel.attr,
 	&dev_attr_enabled.attr,
 	NULL,
 };
