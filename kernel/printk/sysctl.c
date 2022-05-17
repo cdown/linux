@@ -12,7 +12,7 @@
 
 static const int ten_thousand = 10000;
 static const int min_loglevel = LOGLEVEL_EMERG;
-static const int max_loglevel = LOGLEVEL_DEBUG;
+static const int max_loglevel = LOGLEVEL_DEBUG + 1;
 
 static int proc_dointvec_minmax_sysadmin(struct ctl_table *table, int write,
 				void *buffer, size_t *lenp, loff_t *ppos)
@@ -73,7 +73,7 @@ static int printk_force_console_loglevel(struct ctl_table *table, int write,
 	if (ret)
 		return ret;
 
-	if (value < LOGLEVEL_EMERG || value > LOGLEVEL_DEBUG)
+	if (value < LOGLEVEL_EMERG || value > LOGLEVEL_DEBUG + 1)
 		return -ERANGE;
 
 	console_loglevel = value;

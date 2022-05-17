@@ -1249,7 +1249,7 @@ static int console_effective_loglevel(const struct console *con,
 {
 	if (ignore_loglevel) {
 		*source = LLS_IGNORE_LOGLEVEL;
-		return LOGLEVEL_DEBUG;
+		return LOGLEVEL_DEBUG + 1;
 	}
 
 	if (console_loglevel != LOGLEVEL_INVALID) {
@@ -1274,6 +1274,7 @@ static int console_effective_loglevel(const struct console *con,
 static bool suppress_message_printing(int level, struct console *con)
 {
 	enum loglevel_source source;
+	trace_printk("console %s is checking %d >= %d\n", con->name, level, console_effective_loglevel(con, &source));
 	return level >= console_effective_loglevel(con, &source);
 }
 
@@ -2560,7 +2561,7 @@ static int __init console_setup(char *str)
 			loglevel = default_console_loglevel;
 		else {
 			loglevel = clamp(loglevel, LOGLEVEL_EMERG,
-					 LOGLEVEL_DEBUG);
+					 LOGLEVEL_DEBUG + 1);
 			initial_flags |= CON_LOCALLEVEL;
 		}
 	}
@@ -3073,7 +3074,7 @@ static ssize_t loglevel_store(struct device *dev, struct device_attribute *attr,
 	if (ret < 0)
 		return ret;
 
-	if (tmp < LOGLEVEL_EMERG || tmp > LOGLEVEL_DEBUG)
+	if (tmp < LOGLEVEL_EMERG || tmp > LOGLEVEL_DEBUG + 1)
 		return -ERANGE;
 
 	con->level = tmp;
