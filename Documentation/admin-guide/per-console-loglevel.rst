@@ -39,7 +39,8 @@ In order of authority:
   messages beyond this loglevel.
 * ``kernel.force_console_loglevel`` sysctl: Force all consoles to the given
   loglevel. If this value is lower than ``kernel.minimum_console_loglevel``,
-  ``kernel.minimum_console_loglevel`` is respected.
+  ``kernel.minimum_console_loglevel`` is respected. Can also be set to the
+  special value "unset" which removes any existing forced level.
 * ``kernel.default_console_loglevel`` sysctl: The default console loglevel if
   there is no local loglevel for the console, and
   ``kernel.force_console_loglevel`` is unset. If this value is lower than
@@ -49,7 +50,9 @@ In order of authority:
   there is no local loglevel for the console, and
   ``kernel.force_console_loglevel`` is unset. If this value is lower than
   ``kernel.minimum_console_loglevel``, ``kernel.minimum_console_loglevel`` is
-  respected.
+  forced.
+* ``kernel.default_message_loglevel`` sysctl: The default loglevel to send
+  messages at if they are sent with no explicit loglevel.
 
 The default value for ``kernel.default_console_loglevel`` comes from
 ``CONFIG_CONSOLE_LOGLEVEL_DEFAULT``, or ``CONFIG_CONSOLE_LOGLEVEL_QUIET`` if
@@ -58,7 +61,31 @@ The default value for ``kernel.default_console_loglevel`` comes from
 Console attributes
 ~~~~~~~~~~~~~~~~~~
 
-* 
+Registered consoles are exposed at ``/sys/class/console``. For example, if you
+are using ``ttyS0``, the console backing it can be viewed at
+``/sys/class/console/ttyS/``. The following files are available:
+
+* ``effective_loglevel`` (r): The effective loglevel after considering all
+  loglevel authorities. For example, if the local loglevel is 3, but the global
+  minimum console loglevel is 5, then the value will be 5.
+* ``effective_loglevel_source`` (r): The loglevel authority which resulted in
+  the effective loglevel being set. The following values can be present:
+  * ``local``: The console-specific loglevel is in effect.
+  * ``global``: The global default loglevel
+    (``kernel.default_console_loglevel``) is in effect. Set a console-specific
+    loglevel to override it.
+  * ``forced``: The global forced loglevel (``kernel.force_console_loglevel``)
+    is in effect. Write "unset" to ``kernel.force_console_loglevel`` to disable
+    it.
+  * ``minimum``: The global minimum loglevel
+    (``kernel.minimum_console_loglevel``) is in effect. Set a higher
+    console-specific loglevel to override it.
+  * ``ignore_loglevel``: ``ignore_loglevel`` was specified on the kernel
+    command line. Restart without it to use other controls.
+* ``enabled`` (r): Whether the console is enabled.
+* ``loglevel`` (rw): The local loglevel for this console. This will be in
+  effect if no other global control overrides it. Look at
+  ``effective_loglevel`` and ``effective_loglevel_source`` to verify that.
 
 Deprecated
 ~~~~~~~~~~
