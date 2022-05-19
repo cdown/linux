@@ -88,8 +88,6 @@ static DEFINE_SEMAPHORE(console_sem);
 struct console *console_drivers;
 EXPORT_SYMBOL_GPL(console_drivers);
 
-static struct class *console_class;
-
 /*
  * System may need to suppress printk message under certain
  * circumstances, like after kernel panic happens.
@@ -398,6 +396,8 @@ static struct latched_seq clear_seq = {
 	.val[0]		= 0,
 	.val[1]		= 0,
 };
+
+static struct class *console_class;
 
 /*
  * When setting a console loglevel, we may not ultimately end up with that as
@@ -2454,7 +2454,10 @@ static void console_lock_spinning_enable(void) { }
 static int console_lock_spinning_disable_and_check(void) { return 0; }
 static void call_console_drivers(const char *ext_text, size_t ext_len,
 				 const char *text, size_t len, int level) {}
-static bool suppress_message_printing(int level) { return false; }
+static bool suppress_message_printing(int level, struct console *con)
+{
+	return false;
+}
 
 #endif /* CONFIG_PRINTK */
 
@@ -3073,6 +3076,7 @@ static int __init keep_bootcon_setup(char *str)
 
 early_param("keep_bootcon", keep_bootcon_setup);
 
+#ifdef CONFIG_PRINTK
 static ssize_t loglevel_show(struct device *dev, struct device_attribute *attr,
 			     char *buf)
 {
@@ -3184,6 +3188,28 @@ static void console_register_device(struct console *new)
 	if (device_add(new->classdev))
 		put_device(new->classdev);
 }
+
+static void console_setup_class(void) {
+	struct console *con;
+
+	/*
+	 * printk exists for the lifetime of the kernel, it cannot be unloaded,
+	 * so we should never end up back in here.
+	 */
+	if (WARN_ON(console_class))
+		return;
+
+	console_class = class_create(THIS_MODULE, "console");
+	if (!IS_ERR(console_class))
+		console_class->dev_groups = console_sysfs_groups;
+
+	for_each_console(con)
+		console_register_device(con);
+}
+#else /* CONFIG_PRINTK */
+static void console_register_device(struct console *new) {}
+static void console_setup_class(void) {}
+#endif
 
 /*
  * This is called by register_console() to try to match
@@ -3557,12 +3583,7 @@ static int __init printk_late_init(void)
 	WARN_ON(ret < 0);
 	printk_sysctl_init();
 
-	console_class = class_create(THIS_MODULE, "console");
-	if (!WARN_ON(IS_ERR(console_class)))
-		console_class->dev_groups = console_sysfs_groups;
-
-	for_each_console(con)
-		console_register_device(con);
+	console_setup_class();
 
 	return 0;
 }
