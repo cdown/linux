@@ -3246,6 +3246,7 @@ static int try_enable_preferred_console(struct console *newcon,
 			if (c->flags & CON_LOGLEVEL)
 				newcon->level = c->level;
 			newcon->flags |= c->flags;
+			newcon->classdev = NULL;
 
 			if (_braille_register_console(newcon, c))
 				return 0;
@@ -3485,7 +3486,10 @@ int unregister_console(struct console *console)
 		console_drivers->flags |= CON_CONSDEV;
 
 	console->flags &= ~CON_ENABLED;
-	device_unregister(console->classdev);
+
+	if (console->classdev)
+		device_unregister(console->classdev);
+
 	console_unlock();
 	console_sysfs_notify();
 
