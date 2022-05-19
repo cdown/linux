@@ -3181,7 +3181,7 @@ static void console_register_device(struct console *new)
 	dev_set_drvdata(new->classdev, new);
 	new->classdev->release = console_classdev_release;
 	new->classdev->class = console_class;
-	if (WARN_ON(device_add(new->classdev)))
+	if (device_add(new->classdev))
 		put_device(new->classdev);
 }
 
