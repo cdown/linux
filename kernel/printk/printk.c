@@ -3076,7 +3076,7 @@ early_param("keep_bootcon", keep_bootcon_setup);
 static ssize_t loglevel_show(struct device *dev, struct device_attribute *attr,
 			     char *buf)
 {
-	struct console *con = container_of(dev, struct console, classdev);
+	struct console *con = classdev_to_console(dev);
 
 	if (con->flags & CON_LOGLEVEL)
 		return sprintf(buf, "%d\n", con->level);
@@ -3087,7 +3087,7 @@ static ssize_t loglevel_show(struct device *dev, struct device_attribute *attr,
 static ssize_t loglevel_store(struct device *dev, struct device_attribute *attr,
 			      const char *buf, size_t size)
 {
-	struct console *con = container_of(dev, struct console, classdev);
+	struct console *con = classdev_to_console(dev);
 	ssize_t ret;
 	int tmp;
 
@@ -3115,7 +3115,7 @@ static ssize_t effective_loglevel_source_show(struct device *dev,
 					      struct device_attribute *attr,
 					      char *buf)
 {
-	struct console *con = container_of(dev, struct console, classdev);
+	struct console *con = classdev_to_console(dev);
 	enum loglevel_source source;
 
 	console_effective_loglevel(con, &source);
@@ -3128,7 +3128,7 @@ static ssize_t effective_loglevel_show(struct device *dev,
 				       struct device_attribute *attr,
 				       char *buf)
 {
-	struct console *con = container_of(dev, struct console, classdev);
+	struct console *con = classdev_to_console(dev);
 	enum loglevel_source source;
 
 	return sprintf(buf, "%d\n", console_effective_loglevel(con, &source));
@@ -3139,7 +3139,7 @@ static DEVICE_ATTR_RO(effective_loglevel);
 static ssize_t enabled_show(struct device *dev, struct device_attribute *attr,
 			    char *buf)
 {
-	struct console *con = container_of(dev, struct console, classdev);
+	struct console *con = classdev_to_console(dev);
 
 	return sprintf(buf, "%d\n", !!(con->flags & CON_ENABLED));
 }
@@ -3158,15 +3158,7 @@ ATTRIBUTE_GROUPS(console_sysfs);
 
 static void console_classdev_release(struct device *dev)
 {
-	struct console *con = container_of(dev, struct console, classdev);
-
-	/*
-	 * `struct console' objects are statically allocated (or at the very
-	 * least managed outside of our lifecycle), nothing to do. Just set a
-	 * flag so that we know we are no longer waiting for anyone and can
-	 * return control in unregister_console().
-	 */
-	con->flags &= ~CON_CLASSDEV_ACTIVE;
+	kfree(dev);
 }
 
 static void console_register_device(struct console *new)
@@ -3179,13 +3171,17 @@ static void console_register_device(struct console *new)
 	if (IS_ERR_OR_NULL(console_class))
 		return;
 
-	new->flags |= CON_CLASSDEV_ACTIVE;
-	device_initialize(&new->classdev);
-	dev_set_name(&new->classdev, "%s", new->name);
-	new->classdev.release = console_classdev_release;
-	new->classdev.class = console_class;
-	if (WARN_ON(device_add(&new->classdev)))
-		put_device(&new->classdev);
+	new->classdev = kzalloc(sizeof(struct device), GFP_KERNEL);
+	if (!new->classdev)
+		return;
+
+	device_initialize(new->classdev);
+	dev_set_name(new->classdev, "%s", new->name);
+	dev_set_drvdata(new->classdev, new);
+	new->classdev->release = console_classdev_release;
+	new->classdev->class = console_class;
+	if (WARN_ON(device_add(new->classdev)))
+		put_device(new->classdev);
 }
 
 /*
@@ -3462,7 +3458,7 @@ int unregister_console(struct console *console)
 		console_drivers->flags |= CON_CONSDEV;
 
 	console->flags &= ~CON_ENABLED;
-	device_unregister(&console->classdev);
+	device_unregister(console->classdev);
 	console_unlock();
 	console_sysfs_notify();
 
@@ -3474,14 +3470,6 @@ int unregister_console(struct console *console)
 out_disable_unlock:
 	console->flags &= ~CON_ENABLED;
 	console_unlock();
-
-	/*
-	 * Wait for anyone holding the classdev open to close it so that we
-	 * don't remove the module prematurely. Once classdev refcnt is 0,
-	 * CON_CLASSDEV_ACTIVE will be unset in console_classdev_release.
-	 */
-	while (console->flags & CON_CLASSDEV_ACTIVE)
-		schedule_timeout_uninterruptible(msecs_to_jiffies(1));
 
 	return res;
 }

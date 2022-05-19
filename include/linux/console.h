@@ -156,12 +156,6 @@ static inline int con_debug_leave(void)
  */
 #define CON_LOGLEVEL	(128) /* Level set locally for this console */
 
-/*
- * Console has active class device, so may have active readers/writers from
- * /sys/class hierarchy.
- */
-#define CON_CLASSDEV_ACTIVE	(256)
-
 struct console {
 	char	name[16];
 	void	(*write)(struct console *, const char *, unsigned);
@@ -179,8 +173,10 @@ struct console {
 	void	*data;
 	struct	 console *next;
 	int	level;
-	struct	device classdev;
+	struct	device *classdev;
 };
+
+#define classdev_to_console(dev) dev_get_drvdata(dev)
 
 /*
  * for_each_console() allows you to iterate on each console
