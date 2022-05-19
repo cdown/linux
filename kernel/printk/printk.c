@@ -3079,9 +3079,9 @@ static ssize_t loglevel_show(struct device *dev, struct device_attribute *attr,
 	struct console *con = classdev_to_console(dev);
 
 	if (con->flags & CON_LOGLEVEL)
-		return sprintf(buf, "%d\n", con->level);
+		return sysfs_emit(buf, "%d\n", con->level);
 	else
-		return sprintf(buf, "unset\n");
+		return sysfs_emit(buf, "unset\n");
 }
 
 static ssize_t loglevel_store(struct device *dev, struct device_attribute *attr,
@@ -3119,7 +3119,7 @@ static ssize_t effective_loglevel_source_show(struct device *dev,
 	enum loglevel_source source;
 
 	console_effective_loglevel(con, &source);
-	return sprintf(buf, "%s\n", loglevel_source_names[source]);
+	return sysfs_emit(buf, "%s\n", loglevel_source_names[source]);
 }
 
 static DEVICE_ATTR_RO(effective_loglevel_source);
@@ -3131,7 +3131,8 @@ static ssize_t effective_loglevel_show(struct device *dev,
 	struct console *con = classdev_to_console(dev);
 	enum loglevel_source source;
 
-	return sprintf(buf, "%d\n", console_effective_loglevel(con, &source));
+	return sysfs_emit(buf, "%d\n",
+			  console_effective_loglevel(con, &source));
 }
 
 static DEVICE_ATTR_RO(effective_loglevel);
@@ -3141,7 +3142,7 @@ static ssize_t enabled_show(struct device *dev, struct device_attribute *attr,
 {
 	struct console *con = classdev_to_console(dev);
 
-	return sprintf(buf, "%d\n", !!(con->flags & CON_ENABLED));
+	return sysfs_emit(buf, "%d\n", !!(con->flags & CON_ENABLED));
 }
 
 static DEVICE_ATTR_RO(enabled);
