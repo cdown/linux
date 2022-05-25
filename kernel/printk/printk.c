@@ -48,6 +48,7 @@
 #include <linux/sched/clock.h>
 #include <linux/sched/debug.h>
 #include <linux/sched/task_stack.h>
+#include <linux/timer.h>
 
 #include <linux/uaccess.h>
 #include <asm/sections.h>
@@ -60,6 +61,8 @@
 #include "console_cmdline.h"
 #include "braille.h"
 #include "internal.h"
+
+static struct timer_list test_message_timer;
 
 int console_printk[4] = {
 	LOGLEVEL_INVALID,		/* console_loglevel (forced) */
@@ -3537,6 +3540,24 @@ void __init console_init(void)
 	}
 }
 
+static void print_test_messages(struct timer_list *unused)
+{
+	size_t i;
+
+	for (i = 0; i <= LOGLEVEL_DEBUG; i++) {
+		pr_emerg("PCLTEST: emerg\n");
+		pr_alert("PCLTEST: alert\n");
+		pr_crit("PCLTEST: crit\n");
+		pr_err("PCLTEST: err\n");
+		pr_warn("PCLTEST: warn\n");
+		pr_notice("PCLTEST: notice\n");
+		pr_info("PCLTEST: info\n");
+		pr_debug("PCLTEST: debug\n");
+	}
+
+	mod_timer(&test_message_timer, jiffies + msecs_to_jiffies(5000));
+}
+
 /*
  * Some boot consoles access data that is in the init section and which will
  * be discarded after the initcalls have been run. To make sure that no code
@@ -3589,6 +3610,9 @@ static int __init printk_late_init(void)
 	printk_sysctl_init();
 
 	console_setup_class();
+
+	timer_setup(&test_message_timer, print_test_messages, 0);
+	mod_timer(&test_message_timer, jiffies + 1);
 
 	return 0;
 }
