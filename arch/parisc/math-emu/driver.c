@@ -85,9 +85,9 @@ handle_fpe(struct pt_regs *regs)
 	memcpy(&orig_sw, frcopy, sizeof(orig_sw));
 
 	if (FPUDEBUG) {
-		printk(KERN_DEBUG "FP VZOUICxxxxCQCQCQCQCQCRMxxTDVZOUI ->\n   ");
+		_printk(KERN_DEBUG "FP VZOUICxxxxCQCQCQCQCQCRMxxTDVZOUI ->\n   ");
 		printbinary(orig_sw, 32);
-		printk(KERN_DEBUG "\n");
+		_printk(KERN_DEBUG "\n");
 	}
 
 	signalcode = decode_fpu(frcopy, 0x666);
@@ -95,10 +95,10 @@ handle_fpe(struct pt_regs *regs)
 	/* Status word = FR0L. */
 	memcpy(&sw, frcopy, sizeof(sw));
 	if (FPUDEBUG) {
-		printk(KERN_DEBUG "VZOUICxxxxCQCQCQCQCQCRMxxTDVZOUI decode_fpu returns %d|0x%x\n",
+		_printk(KERN_DEBUG "VZOUICxxxxCQCQCQCQCQCRMxxTDVZOUI decode_fpu returns %d|0x%x\n",
 			signalcode >> 24, signalcode & 0xffffff);
 		printbinary(sw, 32);
-		printk(KERN_DEBUG "\n");
+		_printk(KERN_DEBUG "\n");
 	}
 
 	memcpy(regs->fr, frcopy, sizeof regs->fr);

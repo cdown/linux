@@ -201,7 +201,7 @@ fpudispatch(u_int ir, u_int excp_code, u_int holder, u_int fpregs[])
 	else
 		subop = get_subop(ir);
 
-	if (FPUDEBUG) printk("class %d subop %d\n", class, subop);
+	if (FPUDEBUG) _printk("class %d subop %d\n", class, subop);
 
 	switch (excp_code) {
 		case MAJOR_0C_EXCP:

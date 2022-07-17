@@ -336,7 +336,7 @@ decode_fpu(unsigned int Fpu_register[], unsigned int trap_counts[])
 		return SIGNALCODE(SIGFPE, FPE_FLTRES);
 	  default:
 		update_trap_counts(Fpu_register, aflags, bflags, trap_counts);
-		printk("%s(%d) Unknown FPU exception 0x%x\n", __FILE__,
+		_printk("%s(%d) Unknown FPU exception 0x%x\n", __FILE__,
 			__LINE__, Excp_type(exception_index));
 		return SIGNALCODE(SIGILL, ILL_COPROC);
 	  case NOEXCEPTION:	/* no exception */
