@@ -2367,6 +2367,30 @@ static void set_user_specified(struct console_cmdline *c, bool user_specified)
 	console_set_on_cmdline = 1;
 }
 
+static void parse_console_cmdline_options(struct console_cmdline *c,
+					  char *options)
+{
+	bool seen_serial_opts = false;
+	char *key;
+
+	while ((key = strsep(&options, ",")) != NULL) {
+		char *value;
+
+		value = strchr(key, ':');
+		if (value)
+			*(value++) = '\0';
+
+		if (!seen_serial_opts && isdigit(key[0]) && !value) {
+			seen_serial_opts = true;
+			c->options = key;
+			continue;
+		}
+
+		pr_err("ignoring invalid console option: '%s%s%s'\n", key,
+		       value ? ":" : "", value ?: "");
+	}
+}
+
 static int __add_preferred_console(char *name, int idx, char *options,
 				   char *brl_options, bool user_specified)
 {
@@ -2392,7 +2416,7 @@ static int __add_preferred_console(char *name, int idx, char *options,
 	if (!brl_options)
 		preferred_console = i;
 	strlcpy(c->name, name, sizeof(c->name));
-	c->options = options;
+	parse_console_cmdline_options(c, options);
 	set_user_specified(c, user_specified);
 	braille_set_options(c, brl_options);
 
