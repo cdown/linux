@@ -3280,8 +3280,10 @@ static void console_setup_class(void)
 	if (!IS_ERR(console_class))
 		console_class->dev_groups = console_sysfs_groups;
 
+	console_lock();
 	for_each_console(con)
 		console_register_device(con);
+	console_unlock();
 }
 #else /* CONFIG_PRINTK */
 static void console_register_device(struct console *new) {}
