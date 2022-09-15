@@ -1230,11 +1230,16 @@ module_param(ignore_per_console_loglevel, bool, 0644);
 MODULE_PARM_DESC(ignore_per_console_loglevel,
 		 "ignore per-console loglevel setting (only respect global console loglevel)");
 
+int per_console_loglevel_is_set(const struct console *con)
+{
+	return !ignore_per_console_loglevel && con && (con->level > 0);
+}
+
 /*
  * Hierarchy of loglevel authority:
  *
  * 1. con->level. The locally set, console-specific loglevel. Optional, only
- *    valid if the CON_LOGLEVEL flag is set.
+ *    valid if >0.
  * 2. console_loglevel. The default global console loglevel, always present.
  *
  * The behaviour can be further changed by the following printk module
@@ -1263,8 +1268,7 @@ static int console_effective_loglevel(const struct console *con,
 		goto out;
 	}
 
-	if (!ignore_per_console_loglevel &&
-	    (con && (con->flags & CON_LOGLEVEL))) {
+	if (per_console_loglevel_is_set(con)) {
 		lsource = LLS_LOCAL;
 		level = con->level;
 		goto out;
@@ -1751,7 +1755,7 @@ static void warn_on_local_loglevel(void)
 
 	console_lock();
 	for_each_console(con) {
-		if (con->flags & CON_LOGLEVEL) {
+		if (per_console_loglevel_is_set(con)) {
 			warned = true;
 			pr_warn("%s (%d) used syslog(SYSLOG_ACTION_CONSOLE_*) with per-console loglevels set. Consoles with per-console loglevels will ignore the updated value.\n",
 				current->comm, current->pid);
@@ -2496,7 +2500,6 @@ static void parse_console_cmdline_options(struct console_cmdline *c,
 		    isdigit(value[0]) && strlen(value) == 1) {
 			c->level = clamp(value[0] - '0', LOGLEVEL_EMERG,
 					 LOGLEVEL_DEBUG + 1);
-			c->flags |= CON_LOGLEVEL;
 			continue;
 		}
 
@@ -3155,10 +3158,7 @@ static ssize_t loglevel_show(struct device *dev, struct device_attribute *attr,
 {
 	struct console *con = dev_get_drvdata(dev);
 
-	if (con->flags & CON_LOGLEVEL)
-		return sysfs_emit(buf, "%d\n", con->level);
-	else
-		return sysfs_emit(buf, "unset\n");
+	return sysfs_emit(buf, "%d\n", con->level);
 }
 
 static ssize_t loglevel_store(struct device *dev, struct device_attribute *attr,
@@ -3168,14 +3168,14 @@ static ssize_t loglevel_store(struct device *dev, struct device_attribute *attr,
 	ssize_t ret;
 	int tmp;
 
-	if (!strcmp(buf, "unset") || !strcmp(buf, "unset\n")) {
-		con->flags &= ~CON_LOGLEVEL;
-		return size;
-	}
-
 	ret = kstrtoint(buf, 10, &tmp);
 	if (ret < 0)
 		return ret;
+
+	if (tmp == -1) {
+		con->level = tmp;
+		return size;
+	}
 
 	if (tmp < LOGLEVEL_EMERG || tmp > LOGLEVEL_DEBUG + 1)
 		return -ERANGE;
@@ -3184,7 +3184,6 @@ static ssize_t loglevel_store(struct device *dev, struct device_attribute *attr,
 		return -EINVAL;
 
 	con->level = tmp;
-	con->flags |= CON_LOGLEVEL;
 
 	return size;
 }
@@ -3322,8 +3321,11 @@ static int try_enable_preferred_console(struct console *newcon,
 			if (newcon->index < 0)
 				newcon->index = c->index;
 
-			if (c->flags & CON_LOGLEVEL)
+			if (c->level > 0)
 				newcon->level = c->level;
+			else
+				newcon->level = -1;
+
 			newcon->flags |= c->flags;
 			newcon->classdev = NULL;
 

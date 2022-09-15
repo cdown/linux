@@ -112,11 +112,11 @@ static void sysrq_handle_loglevel(int key)
 
 	console_lock();
 	for_each_console(con) {
-		if (!warned && (con->flags & CON_LOGLEVEL)) {
+		if (!warned && per_console_loglevel_is_set(con)) {
 			warned = 1;
 			pr_warn("Overriding per-console loglevel from sysrq\n");
 		}
-		con->flags &= ~CON_LOGLEVEL;
+		con->level = -1;
 	}
 	console_unlock();
 }
