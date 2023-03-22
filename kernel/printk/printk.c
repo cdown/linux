@@ -3487,6 +3487,9 @@ static void console_register_device(struct console *con)
 	if (IS_ERR_OR_NULL(console_class))
 		return;
 
+	if (WARN_ON(con->classdev))
+		return;
+
 	con->classdev = kzalloc(sizeof(struct device), GFP_KERNEL);
 	if (!con->classdev)
 		return;
