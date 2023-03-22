@@ -102,7 +102,7 @@ __setup("sysrq_always_enabled", sysrq_always_enabled_setup);
 static void sysrq_handle_loglevel(int key)
 {
 	int i;
-	int cookie,
+	int cookie;
 	int warned = 0;
 	struct console *con;
 
@@ -112,7 +112,7 @@ static void sysrq_handle_loglevel(int key)
 	console_loglevel = i;
 
 	cookie = console_srcu_read_lock();
-	for_each_console(con) {
+	for_each_console_srcu(con) {
 		if (!warned && per_console_loglevel_is_set(con)) {
 			warned = 1;
 			pr_warn("Overriding per-console loglevel from sysrq\n");

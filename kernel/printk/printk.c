@@ -1848,6 +1848,7 @@ static void warn_on_local_loglevel(void)
 {
 	static bool warned;
 	struct console *con;
+	int cookie;
 
 	if (warned)
 		return;
@@ -1855,8 +1856,8 @@ static void warn_on_local_loglevel(void)
 	if (ignore_per_console_loglevel)
 		return;
 
-	console_lock();
-	for_each_console(con) {
+	cookie = console_srcu_read_lock();
+	for_each_console_srcu(con) {
 		if (per_console_loglevel_is_set(con)) {
 			warned = true;
 			pr_warn("%s (%d) used syslog(SYSLOG_ACTION_CONSOLE_*) with per-console loglevels set. Consoles with per-console loglevels will ignore the updated value.\n",
@@ -1864,7 +1865,7 @@ static void warn_on_local_loglevel(void)
 			break;
 		}
 	}
-	console_unlock();
+	console_srcu_read_unlock(cookie);
 }
 
 int do_syslog(int type, char __user *buf, int len, int source)
@@ -3502,6 +3503,7 @@ static void console_register_device(struct console *new)
 static void console_setup_class(void)
 {
 	struct console *con;
+	int cookie;
 
 	/*
 	 * printk exists for the lifetime of the kernel, it cannot be unloaded,
@@ -3514,10 +3516,10 @@ static void console_setup_class(void)
 	if (!IS_ERR(console_class))
 		console_class->dev_groups = console_sysfs_groups;
 
-	console_lock();
-	for_each_console(con)
+	cookie = console_srcu_read_lock();
+	for_each_console_srcu(con)
 		console_register_device(con);
-	console_unlock();
+	console_srcu_read_unlock(cookie);
 }
 #else /* CONFIG_PRINTK */
 static void console_register_device(struct console *new)
