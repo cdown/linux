@@ -1840,39 +1840,12 @@ static void syslog_clear(void)
 	mutex_unlock(&syslog_lock);
 }
 
-/*
- * Using the global klogctl/syslog API is unlikely to do what you want if you
- * also have console specific loglevels. Warn about it.
- */
-static void warn_on_local_loglevel(void)
-{
-	static bool warned;
-	struct console *con;
-	int cookie;
-
-	if (warned)
-		return;
-
-	if (ignore_per_console_loglevel)
-		return;
-
-	cookie = console_srcu_read_lock();
-	for_each_console_srcu(con) {
-		if (per_console_loglevel_is_set(con)) {
-			warned = true;
-			pr_warn("%s (%d) used syslog(SYSLOG_ACTION_CONSOLE_*) with per-console loglevels set. Consoles with per-console loglevels will ignore the updated value.\n",
-				current->comm, current->pid);
-			break;
-		}
-	}
-	console_srcu_read_unlock(cookie);
-}
-
 int do_syslog(int type, char __user *buf, int len, int source)
 {
 	struct printk_info info;
 	bool clear = false;
 	static int saved_console_loglevel = LOGLEVEL_DEFAULT;
+	static int saved_ignore_per_console_loglevel = false;
 	int error;
 
 	error = check_syslog_permissions(type, source);
@@ -1913,22 +1886,25 @@ int do_syslog(int type, char __user *buf, int len, int source)
 		break;
 	/* Disable logging to console */
 	case SYSLOG_ACTION_CONSOLE_OFF:
-		warn_on_local_loglevel();
-		if (saved_console_loglevel == LOGLEVEL_DEFAULT)
+		if (saved_console_loglevel == LOGLEVEL_DEFAULT) {
 			saved_console_loglevel = console_loglevel;
+			saved_ignore_per_console_loglevel = ignore_per_console_loglevel;
+		}
 		console_loglevel = minimum_console_loglevel;
+		ignore_per_console_loglevel = true;
 		break;
 	/* Enable logging to console */
 	case SYSLOG_ACTION_CONSOLE_ON:
-		warn_on_local_loglevel();
 		if (saved_console_loglevel != LOGLEVEL_DEFAULT) {
 			console_loglevel = saved_console_loglevel;
+			ignore_per_console_loglevel = saved_ignore_per_console_loglevel;
 			saved_console_loglevel = LOGLEVEL_DEFAULT;
 		}
 		break;
 	/* Set level of messages printed to console */
 	case SYSLOG_ACTION_CONSOLE_LEVEL:
-		warn_on_local_loglevel();
+		if (!ignore_per_console_loglevel)
+			pr_warn_once("SYSLOG_ACTION_CONSOLE_LEVEL is ignored by consoles with an explicitly set per-console loglevel, see Documentation/admin-guide/per-console-loglevel\n");
 		if (len < 1 || len > 8)
 			return -EINVAL;
 		if (len < minimum_console_loglevel)
