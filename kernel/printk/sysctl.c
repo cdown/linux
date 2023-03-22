@@ -13,7 +13,7 @@
 static const int ten_thousand = 10000;
 
 static int min_loglevel = LOGLEVEL_EMERG;
-static int max_loglevel = LOGLEVEL_DEBUG + 1;
+static int max_loglevel = CONSOLE_LOGLEVEL_MOTORMOUTH;
 
 static int proc_dointvec_minmax_sysadmin(struct ctl_table *table, int write,
 				void *buffer, size_t *lenp, loff_t *ppos)
