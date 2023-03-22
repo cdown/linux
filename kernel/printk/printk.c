@@ -3477,7 +3477,7 @@ static void console_classdev_release(struct device *dev)
 	kfree(dev);
 }
 
-static void console_register_device(struct console *new)
+static void console_register_device(struct console *con)
 {
 	/*
 	 * We might be called from register_console() before the class is
@@ -3487,17 +3487,17 @@ static void console_register_device(struct console *new)
 	if (IS_ERR_OR_NULL(console_class))
 		return;
 
-	new->classdev = kzalloc(sizeof(struct device), GFP_KERNEL);
-	if (!new->classdev)
+	con->classdev = kzalloc(sizeof(struct device), GFP_KERNEL);
+	if (!con->classdev)
 		return;
 
-	device_initialize(new->classdev);
-	dev_set_name(new->classdev, "%s%d", new->name, new->index);
-	dev_set_drvdata(new->classdev, new);
-	new->classdev->release = console_classdev_release;
-	new->classdev->class = console_class;
-	if (device_add(new->classdev))
-		put_device(new->classdev);
+	device_initialize(con->classdev);
+	dev_set_name(con->classdev, "%s%d", con->name, con->index);
+	dev_set_drvdata(con->classdev, con);
+	con->classdev->release = console_classdev_release;
+	con->classdev->class = console_class;
+	if (device_add(con->classdev))
+		put_device(con->classdev);
 }
 
 static void console_setup_class(void)
