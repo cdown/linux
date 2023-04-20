@@ -17,6 +17,7 @@
 #include <linux/atomic.h>
 #include <linux/bits.h>
 #include <linux/rculist.h>
+#include <linux/device.h>
 #include <linux/types.h>
 
 struct vc_data;
@@ -206,6 +207,8 @@ struct console {
 	unsigned long		dropped;
 	void			*data;
 	struct hlist_node	node;
+	int			level;
+	struct device		*classdev;
 };
 
 #ifdef CONFIG_LOCKDEP
