@@ -188,6 +188,9 @@ enum cons_flags {
  * @dropped:		Number of unreported dropped ringbuffer records
  * @data:		Driver private data
  * @node:		hlist node for the console list
+ * @level:		Console-specific loglevel, see
+ *			Documentation/admin-guide/per-console-loglevel.rst
+ * @classdev:		Console class device for /sys/class/console
  */
 struct console {
 	char			name[16];
