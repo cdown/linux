@@ -1285,7 +1285,7 @@ MODULE_PARM_DESC(
 
 bool per_console_loglevel_is_set(const struct console *con)
 {
-	return !ignore_per_console_loglevel && con && (con->level > 0);
+	return !ignore_per_console_loglevel && con && (READ_ONCE(con->level) > 0);
 }
 
 /*
@@ -1335,7 +1335,7 @@ static int console_effective_loglevel(const struct console *con)
 		level = CONSOLE_LOGLEVEL_MOTORMOUTH;
 		break;
 	case LLS_LOCAL:
-		level = con->level;
+		level = READ_ONCE(con->level);
 		break;
 	case LLS_GLOBAL:
 		level = console_loglevel;
@@ -3481,7 +3481,7 @@ static ssize_t loglevel_show(struct device *dev, struct device_attribute *attr,
 {
 	struct console *con = dev_get_drvdata(dev);
 
-	return sysfs_emit(buf, "%d\n", con->level);
+	return sysfs_emit(buf, "%d\n", READ_ONCE(con->level));
 }
 
 static ssize_t loglevel_store(struct device *dev, struct device_attribute *attr,
@@ -3496,14 +3496,14 @@ static ssize_t loglevel_store(struct device *dev, struct device_attribute *attr,
 		return ret;
 
 	if (level == -1) {
-		con->level = level;
+		WRITE_ONCE(con->level, level);
 		return size;
 	}
 
 	if (clamp_loglevel(level) != level)
 		return -ERANGE;
 
-	con->level = level;
+	WRITE_ONCE(con->level, level);
 
 	return size;
 }
