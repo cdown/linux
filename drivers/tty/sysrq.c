@@ -587,6 +587,7 @@ static void __sysrq_put_key_op(int key, const struct sysrq_key_op *op_p)
 void __handle_sysrq(int key, bool check_mask)
 {
 	const struct sysrq_key_op *op_p;
+	bool orig_ignore_per_console_loglevel;
 	int orig_log_level;
 	int orig_suppress_printk;
 	int i;
@@ -604,6 +605,9 @@ void __handle_sysrq(int key, bool check_mask)
 	 */
 	orig_log_level = console_loglevel;
 	console_loglevel = CONSOLE_LOGLEVEL_DEFAULT;
+
+	orig_ignore_per_console_loglevel = ignore_per_console_loglevel;
+	ignore_per_console_loglevel = true;
 
 	op_p = __sysrq_get_key_op(key);
 	if (op_p) {
@@ -640,6 +644,7 @@ void __handle_sysrq(int key, bool check_mask)
 	rcu_read_unlock();
 	rcu_sysrq_end();
 
+	ignore_per_console_loglevel = orig_ignore_per_console_loglevel;
 	suppress_printk = orig_suppress_printk;
 }
 
