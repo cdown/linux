@@ -22,10 +22,33 @@ using the serial console in cases that netconsole doesn't receive messages
 during particularly bad system issues, while still keeping the noise low enough
 to avoid inducing latency in userspace applications.
 
+Loglevel
+--------
+
+Kernel loglevels are defined thus:
+
++---+--------------+-----------------------------------+
+| 0 | KERN_EMERG   | system is unusable                |
++---+--------------+-----------------------------------+
+| 1 | KERN_ALERT   | action must be taken immediately  |
++---+--------------+-----------------------------------+
+| 2 | KERN_CRIT    | critical conditions               |
++---+--------------+-----------------------------------+
+| 3 | KERN_ERR     | error conditions                  |
++---+--------------+-----------------------------------+
+| 4 | KERN_WARNING | warning conditions                |
++---+--------------+-----------------------------------+
+| 5 | KERN_NOTICE  | normal but significant condition  |
++---+--------------+-----------------------------------+
+| 6 | KERN_INFO    | informational                     |
++---+--------------+-----------------------------------+
+| 7 | KERN_DEBUG   | debug-level messages              |
++---+--------------+-----------------------------------+
+
 Tunables
 --------
 
-In order to allow tuning this, the following controls exist:
+In order to allow tuning per-console loglevels, the following controls exist:
 
 Global
 ~~~~~~
