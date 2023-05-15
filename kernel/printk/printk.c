@@ -1898,7 +1898,7 @@ int do_syslog(int type, char __user *buf, int len, int source)
 	case SYSLOG_ACTION_CONSOLE_LEVEL:
 		if (!ignore_per_console_loglevel)
 			pr_warn_once(
-				"SYSLOG_ACTION_CONSOLE_LEVEL is ignored by consoles with an explicitly set per-console loglevel, see Documentation/admin-guide/per-console-loglevel\n");
+				"SYSLOG_ACTION_CONSOLE_LEVEL is ignored by consoles with an explicitly set per-console loglevel, see Documentation/admin-guide/per-console-loglevel.rst\n");
 		if (len < 1 || len > 8)
 			return -EINVAL;
 		if (len < minimum_console_loglevel)
