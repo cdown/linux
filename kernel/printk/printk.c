@@ -2561,7 +2561,7 @@ static bool find_and_remove_console_option(char *options, const char *key,
 		if (strcmp(option, key) == 0) {
 			found = true;
 			if (value) {
-				if (strlen(value) > val_buf_size - 1) {
+				if (strlen(value) >= val_buf_size) {
 					pr_warn("Can't copy console option value for %s:%s: not enough space (%zu)\n",
 						option, value, val_buf_size);
 					found = false;
