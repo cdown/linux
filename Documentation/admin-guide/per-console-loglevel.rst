@@ -61,6 +61,7 @@ further:
 
 * ``ignore_loglevel`` on the kernel command line or set in printk parameters:
   Emit all messages. All other controls are ignored if this is present.
+
 * ``ignore_per_console_loglevel`` on the kernel command line or set in printk
   parameters: Ignore all per-console loglevels and use the global loglevel.
 
@@ -76,32 +77,27 @@ are using ``ttyS0``, the console backing it can be viewed at
 ``/sys/class/console/ttyS0/``. The following files are available:
 
 * ``effective_loglevel`` (r): The effective loglevel after considering all
-  loglevel authorities. For example, if the console-specific loglevel is 3, but
-  the global minimum console loglevel [*]_ is 5, then the value will be 5.
+  loglevel authorities. For example, it shows the value of the console-specific
+  loglevel when a console-specific loglevel is defined, and shows the global
+  console loglevel value when the console-specific one is not defined.
+
 * ``effective_loglevel_source`` (r): The loglevel authority which resulted in
   the effective loglevel being set. The following values can be present:
 
     * ``local``: The console-specific loglevel is in effect.
+
     * ``global``: The global loglevel (``kernel.console_loglevel``) is in
       effect. Set a console-specific loglevel to override it.
+
     * ``ignore_loglevel``: ``ignore_loglevel`` was specified on the kernel
       command line or at ``/sys/module/printk/parameters/ignore_loglevel``.
       Disable it to use level controls.
-    * ``ignore_per_console_loglevel``: ``ignore_per_console_loglevel`` was
-      specified on the kernel command line or at
-      ``/sys/module/printk/parameters/ignore_per_console_loglevel``. Disable it
-      to use per-console level controls.
 
 * ``enabled`` (r): Whether the console is enabled.
+
 * ``loglevel`` (rw): The local, console-specific loglevel for this console.
   This will be in effect if no other global control overrides it. Look at
   ``effective_loglevel`` and ``effective_loglevel_source`` to verify that.
-
-.. [*] The existence of a minimum console loglevel is generally considered to
-   be a confusing and rarely used interface, and as such is not exposed through
-   the modern printk sysctl APIs that obsoleted ``kernel.printk``. Use the
-   legacy ``kernel.printk`` sysctl to control it if you have a rare use case
-   that requires changing it. The default value is ``CONSOLE_LOGLEVEL_MIN``.
 
 Deprecated
 ~~~~~~~~~~
