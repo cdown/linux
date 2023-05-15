@@ -117,7 +117,7 @@ static void sysrq_handle_loglevel(int key)
 			warned = 1;
 			pr_warn("Overriding per-console loglevel from sysrq\n");
 		}
-		con->level = -1;
+		WRITE_ONCE(con->level, -1);
 	}
 	console_srcu_read_unlock(cookie);
 }
