@@ -39,6 +39,26 @@ The format of this option is::
 			(LOGLEVEL_DEBUG + 1), and messages below that will be
 			emitted onto the console as they become available.
 
+The available loglevels are defined thus:
+
++---+--------------+-----------------------------------+
+| 0 | KERN_EMERG   | system is unusable                |
++---+--------------+-----------------------------------+
+| 1 | KERN_ALERT   | action must be taken immediately  |
++---+--------------+-----------------------------------+
+| 2 | KERN_CRIT    | critical conditions               |
++---+--------------+-----------------------------------+
+| 3 | KERN_ERR     | error conditions                  |
++---+--------------+-----------------------------------+
+| 4 | KERN_WARNING | warning conditions                |
++---+--------------+-----------------------------------+
+| 5 | KERN_NOTICE  | normal but significant condition  |
++---+--------------+-----------------------------------+
+| 6 | KERN_INFO    | informational                     |
++---+--------------+-----------------------------------+
+| 7 | KERN_DEBUG   | debug-level messages              |
++---+--------------+-----------------------------------+
+
 You can specify multiple console= options on the kernel command line.
 
 The behavior is well defined when each device type is mentioned only once.
