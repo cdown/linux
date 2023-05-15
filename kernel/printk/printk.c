@@ -2743,6 +2743,8 @@ static int __add_preferred_console(const char *name, const short idx,
 	ret = find_and_remove_loglevel_option(options);
 	if (ret >= 0)
 		c->level = ret;
+	else
+		c->level = -1;
 
 	c->options = options;
 	set_user_specified(c, user_specified);
