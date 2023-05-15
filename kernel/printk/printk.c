@@ -1269,7 +1269,7 @@ module_param(ignore_loglevel, bool, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(ignore_loglevel,
 		 "ignore loglevel setting (prints all kernel messages to the console)");
 
-static bool __read_mostly ignore_per_console_loglevel;
+bool __read_mostly ignore_per_console_loglevel;
 
 static int __init ignore_per_console_loglevel_setup(char *str)
 {
