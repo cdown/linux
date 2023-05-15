@@ -8,7 +8,6 @@ struct console_cmdline
 	int	index;				/* Minor dev. to use	    */
 	char	devname[32];			/* DEVNAME:0.0 style device name */
 	int	level;				/* Log level to use */
-	short	flags;				/* Initial flags */
 	bool	user_specified;			/* Specified by command line vs. platform */
 	char	*options;			/* Options for the driver   */
 #ifdef CONFIG_A11Y_BRAILLE_CONSOLE
