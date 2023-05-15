@@ -2597,7 +2597,7 @@ static bool find_and_remove_console_option(char *options, const char *key,
 
 static int find_and_remove_loglevel_option(char *options)
 {
-	char val[3];
+	char val[16];
 	int loglevel;
 
 	if (!find_and_remove_console_option(options, "loglevel", val,
@@ -2609,7 +2609,12 @@ static int find_and_remove_loglevel_option(char *options)
 		return -EINVAL;
 	}
 
-	return clamp_loglevel(loglevel);
+	if (clamp_loglevel(loglevel) != loglevel) {
+		pr_warn("Per-console loglevel out of range, ignoring: %d\n", loglevel);
+		return -ERANGE;
+	}
+
+	return loglevel;
 }
 
 static int __add_preferred_console(char *name, int idx, char *options,
