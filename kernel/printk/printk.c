@@ -3650,7 +3650,6 @@ static int try_enable_preferred_console(struct console *newcon,
 			else
 				newcon->level = -1;
 
-			newcon->flags |= c->flags;
 			newcon->classdev = NULL;
 
 			if (_braille_register_console(newcon, c))
