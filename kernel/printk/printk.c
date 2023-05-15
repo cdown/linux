@@ -1325,9 +1325,6 @@ static int console_effective_loglevel(const struct console *con)
 	enum loglevel_source source;
 	int level;
 
-	if (WARN_ON_ONCE(!con))
-		return default_console_loglevel;
-
 	source = console_effective_loglevel_source(con);
 
 	switch (source) {
@@ -1354,9 +1351,6 @@ console_effective_loglevel_source_str(const struct console *con)
 {
 	enum loglevel_source source;
 	const char *str;
-
-	if (WARN_ON_ONCE(!con))
-		return "unknown";
 
 	source = console_effective_loglevel_source(con);
 
