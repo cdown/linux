@@ -1,5 +1,5 @@
 What:		/sys/class/console/
-Date:		April 2023
+Date:		January 2024
 Contact:	Chris Down <chris@chrisdown.name>
 Description:	Interface for viewing and setting per-console attributes, like
 		the per-console loglevel. For a high-level document describing
@@ -8,14 +8,14 @@ Description:	Interface for viewing and setting per-console attributes, like
 		Documentation/admin-guide/per-console-loglevel.rst.
 
 What:		/sys/class/console/<C>/effective_loglevel
-Date:		April 2023
+Date:		January 2024
 Contact:	Chris Down <chris@chrisdown.name>
 Description:	Read only. The currently effective loglevel for this console.
 		All messages emitted with a loglevel below the effective value
 		will be emitted to the console.
 
 What:		/sys/class/console/<C>/effective_loglevel_source
-Date:		April 2023
+Date:		January 2024
 Contact:	Chris Down <chris@chrisdown.name>
 Description:	Read only. The currently effective loglevel source for this
 		console -- for example, whether it was set globally, or whether
@@ -32,12 +32,12 @@ Description:	Read only. The currently effective loglevel source for this
 			=============== ============================================
 
 What:		/sys/class/console/<C>/enabled
-Date:		April 2023
+Date:		January 2024
 Contact:	Chris Down <chris@chrisdown.name>
 Description:	Read only. "1" if the console is enabled, "0" otherwise.
 
 What:		/sys/class/console/<C>/loglevel
-Date:		April 2023
+Date:		January 2024
 Contact:	Chris Down <chris@chrisdown.name>
 Description:	Read write. The current per-console loglevel, which will take
 		effect if not overridden by other non-sysfs controls (see
