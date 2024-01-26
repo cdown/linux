@@ -102,7 +102,6 @@ __setup("sysrq_always_enabled", sysrq_always_enabled_setup);
 static void sysrq_handle_loglevel(u8 key)
 {
 	u8 loglevel = key - '0';
-	int i;
 	int cookie;
 	int warned = 0;
 	struct console *con;
