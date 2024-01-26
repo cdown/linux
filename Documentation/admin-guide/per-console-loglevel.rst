@@ -108,4 +108,4 @@ Deprecated
   considered to quite confusing, doesn't perform checks on the values given,
   and is unaware of per-console loglevel semantics.
 
-Chris Down <chris@chrisdown.name>, 27-April-2023
+Chris Down <chris@chrisdown.name>, 26-January-2024
