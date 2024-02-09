@@ -5954,7 +5954,7 @@ again:
 	    !sc->hibernation_mode &&
 	    (test_bit(LRUVEC_CGROUP_CONGESTED, &target_lruvec->flags) ||
 	     test_bit(LRUVEC_NODE_CONGESTED, &target_lruvec->flags)))
-		reclaim_throttle(pgdat, VMSCAN_THROTTLE_CONGESTED);
+		reclaim_throttle(pgdat, VMSCAN_THROTTLE_WRITEBACK);
 
 	if (should_continue_reclaim(pgdat, nr_node_reclaimed, sc))
 		goto again;
