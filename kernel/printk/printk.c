@@ -4035,7 +4035,8 @@ static ssize_t enabled_show(struct device *dev, struct device_attribute *attr,
 {
 	struct console *con = dev_get_drvdata(dev);
 
-	return sysfs_emit(buf, "%d\n", !!(con->flags & CON_ENABLED));
+	return sysfs_emit(buf, "%d\n",
+			  !!(console_srcu_read_flags(con) & CON_ENABLED));
 }
 
 static DEVICE_ATTR_RO(enabled);
