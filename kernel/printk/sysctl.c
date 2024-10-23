@@ -12,6 +12,9 @@
 
 static const int ten_thousand = 10000;
 
+static int min_msg_loglevel = LOGLEVEL_EMERG;
+static int max_msg_loglevel = LOGLEVEL_DEBUG;
+
 static int proc_dointvec_minmax_sysadmin(const struct ctl_table *table, int write,
 				void *buffer, size_t *lenp, loff_t *ppos)
 {
@@ -30,6 +33,29 @@ static int printk_sysctl_deprecated(const struct ctl_table *table, int write,
 		pr_warn_once("printk: The kernel.printk sysctl is deprecated. Consider using kernel.console_loglevel or kernel.default_message_loglevel instead.\n");
 
 	return res;
+}
+
+static int printk_console_loglevel(const struct ctl_table *table, int write,
+				   void *buffer, size_t *lenp, loff_t *ppos)
+{
+	struct ctl_table ltable = *table;
+	int ret, level;
+
+	if (!write)
+		return proc_dointvec(table, write, buffer, lenp, ppos);
+
+	ltable.data = &level;
+
+	ret = proc_dointvec(&ltable, write, buffer, lenp, ppos);
+	if (ret)
+		return ret;
+
+	if (level != -1 && level != clamp_loglevel(level))
+		return -ERANGE;
+
+	console_loglevel = level;
+
+	return 0;
 }
 
 static struct ctl_table printk_sysctls[] = {
@@ -87,6 +113,22 @@ static struct ctl_table printk_sysctls[] = {
 		.proc_handler	= proc_dointvec_minmax_sysadmin,
 		.extra1		= SYSCTL_ZERO,
 		.extra2		= SYSCTL_TWO,
+	},
+	{
+		.procname	= "console_loglevel",
+		.data		= &console_loglevel,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= printk_console_loglevel,
+	},
+	{
+		.procname	= "default_message_loglevel",
+		.data		= &default_message_loglevel,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= &min_msg_loglevel,
+		.extra2		= &max_msg_loglevel,
 	},
 };
 
