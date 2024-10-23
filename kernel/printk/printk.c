@@ -4655,10 +4655,6 @@ void __init console_init(void)
  * To mitigate this problem somewhat, only unregister consoles whose memory
  * intersects with the init section. Note that all other boot consoles will
  * get unregistered when the real preferred console is registered.
- *
- * Early consoles will also have been registered before we had the
- * infrastructure to put them into /sys/class/console, so make sure they get
- * set up now that we're ready.
  */
 static int __init printk_late_init(void)
 {
