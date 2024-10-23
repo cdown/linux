@@ -3146,6 +3146,10 @@ void console_prepend_replay(struct printk_message *pmsg)
  * @pmsg will contain the formatted result. @pmsg->pbufs must point to a
  * struct printk_buffers.
  *
+ * @con is the console in question. Only @con->flags and @con->level are
+ * guaranteed to be valid at this point. Note especially well that con->seq is
+ * not yet guaranteed to be consistent with @seq.
+ *
  * @seq is the record to read and format. If it is not available, the next
  * valid record is read.
  *
