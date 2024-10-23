@@ -2250,8 +2250,25 @@ static u8 *__printk_recursion_counter(void)
 
 int printk_delay_msec __read_mostly;
 
-static inline void printk_delay(void)
+static inline void printk_delay(int level)
 {
+	bool will_emit = false;
+	int cookie;
+	struct console *con;
+
+	cookie = console_srcu_read_lock();
+
+	for_each_console_srcu(con) {
+		if (!suppress_message_printing(level, con)) {
+			will_emit = true;
+			break;
+		}
+	}
+	console_srcu_read_unlock(cookie);
+
+	if (!will_emit)
+		return;
+
 	boot_delay_msec();
 
 	if (unlikely(printk_delay_msec)) {
@@ -2484,8 +2501,6 @@ asmlinkage int vprintk_emit(int facility, int level,
 {
 	struct console_flush_type ft;
 	int printed_len;
-	int cookie;
-	struct console *con;
 
 	/* Suppress unimportant messages after panic happens */
 	if (unlikely(suppress_printk))
@@ -2508,14 +2523,7 @@ asmlinkage int vprintk_emit(int facility, int level,
 		ft.legacy_direct = false;
 	}
 
-	cookie = console_srcu_read_lock();
-	for_each_console_srcu(con) {
-		if (!suppress_message_printing(level, con)) {
-			printk_delay();
-			break;
-		}
-	}
-	console_srcu_read_unlock(cookie);
+	printk_delay(level);
 
 	printed_len = vprintk_store(facility, level, dev_info, fmt, args);
 
