@@ -12,8 +12,8 @@
 
 static const int ten_thousand = 10000;
 
-static int min_loglevel = LOGLEVEL_EMERG;
-static int max_loglevel = CONSOLE_LOGLEVEL_MOTORMOUTH;
+static int min_msg_loglevel = LOGLEVEL_EMERG;
+static int max_msg_loglevel = LOGLEVEL_DEBUG;
 
 static int proc_dointvec_minmax_sysadmin(const struct ctl_table *table, int write,
 				void *buffer, size_t *lenp, loff_t *ppos)
@@ -128,8 +128,8 @@ static struct ctl_table printk_sysctls[] = {
 		.maxlen		= sizeof(int),
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec_minmax,
-		.extra1		= &min_loglevel,
-		.extra2		= &max_loglevel,
+		.extra1		= &min_msg_loglevel,
+		.extra2		= &max_msg_loglevel,
 	},
 };
 
