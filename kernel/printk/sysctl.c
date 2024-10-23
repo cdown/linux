@@ -24,7 +24,7 @@ static int proc_dointvec_minmax_sysadmin(const struct ctl_table *table, int writ
 	return proc_dointvec_minmax(table, write, buffer, lenp, ppos);
 }
 
-static int printk_sysctl_deprecated(struct ctl_table *table, int write,
+static int printk_sysctl_deprecated(const struct ctl_table *table, int write,
 				    void *buffer, size_t *lenp, loff_t *ppos)
 {
 	int res = proc_dointvec(table, write, buffer, lenp, ppos);
