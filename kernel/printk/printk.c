@@ -3164,15 +3164,13 @@ bool printk_get_next_message(struct printk_message *pmsg, struct console *con,
 	struct printk_info info;
 	struct printk_record r;
 	size_t len = 0;
-	bool is_extended, may_suppress;
+	bool is_extended;
 
 	if (con) {
 		is_extended = console_srcu_read_flags(con) & CON_EXTENDED;
-		may_suppress = true;
 	} else {
 		/* Used only by devkmsg_read(). */
 		is_extended = true;
-		may_suppress = false;
 	}
 
 	/*
@@ -3193,8 +3191,8 @@ bool printk_get_next_message(struct printk_message *pmsg, struct console *con,
 	pmsg->seq = r.info->seq;
 	pmsg->dropped = r.info->seq - seq;
 
-	/* Skip record that has level above the console loglevel. */
-	if (may_suppress && suppress_message_printing(r.info->level, con))
+	/* Never suppress when used in devkmsg_read() */
+	if (con && suppress_message_printing(r.info->level, con))
 		goto out;
 
 	if (is_extended) {
