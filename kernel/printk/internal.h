@@ -15,6 +15,21 @@ int devkmsg_sysctl_set_loglvl(const struct ctl_table *table, int write,
 #define printk_sysctl_init() do { } while (0)
 #endif
 
+extern bool ignore_loglevel;
+
+enum loglevel_source {
+	LLS_GLOBAL,
+	LLS_LOCAL,
+	LLS_IGNORE_LOGLEVEL,
+};
+
+void console_register_device(struct console *new);
+void console_setup_class(void);
+
+enum loglevel_source
+console_effective_loglevel_source(const struct console *con);
+int console_effective_loglevel(const struct console *con);
+
 #define con_printk(lvl, con, fmt, ...)				\
 	printk(lvl pr_fmt("%s%sconsole [%s%d] " fmt),		\
 		(con->flags & CON_NBCON) ? "" : "legacy ",	\

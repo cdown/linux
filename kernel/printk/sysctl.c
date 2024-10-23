@@ -30,8 +30,7 @@ static int printk_sysctl_deprecated(const struct ctl_table *table, int write,
 	int res = proc_dointvec(table, write, buffer, lenp, ppos);
 
 	if (write)
-		pr_warn_once(
-			"printk: The kernel.printk sysctl is deprecated. Consider using kernel.console_loglevel or kernel.default_message_loglevel instead.\n");
+		pr_warn_once("printk: The kernel.printk sysctl is deprecated. Consider using kernel.console_loglevel or kernel.default_message_loglevel instead.\n");
 
 	return res;
 }
