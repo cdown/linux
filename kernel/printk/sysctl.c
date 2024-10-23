@@ -36,7 +36,7 @@ static int printk_sysctl_deprecated(const struct ctl_table *table, int write,
 	return res;
 }
 
-static int printk_console_loglevel(struct ctl_table *table, int write,
+static int printk_console_loglevel(const struct ctl_table *table, int write,
 				   void *buffer, size_t *lenp, loff_t *ppos)
 {
 	struct ctl_table ltable = *table;
