@@ -322,6 +322,9 @@ struct nbcon_write_context {
  * @dropped:		Number of unreported dropped ringbuffer records
  * @data:		Driver private data
  * @node:		hlist node for the console list
+ * @level:		Console-specific loglevel, see
+ *			Documentation/admin-guide/per-console-loglevel.rst
+ * @classdev:		Console class device for /sys/class/console
  *
  * @nbcon_state:	State for nbcon consoles
  * @nbcon_seq:		Sequence number of the next record for nbcon to print
