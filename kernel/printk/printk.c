@@ -3993,14 +3993,13 @@ static ssize_t loglevel_store(struct device *dev, struct device_attribute *attr,
 	if (ret < 0)
 		return ret;
 
-	if (level == -1) {
-		WRITE_ONCE(con->level, level);
-		return size;
-	}
+	if (level == -1)
+		goto out;
 
 	if (clamp_loglevel(level) != level)
 		return -ERANGE;
 
+out:
 	WRITE_ONCE(con->level, level);
 
 	return size;
