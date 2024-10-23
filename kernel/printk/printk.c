@@ -45,6 +45,7 @@
 #include <linux/irq_work.h>
 #include <linux/ctype.h>
 #include <linux/uio.h>
+#include <linux/device.h>
 #include <linux/sched/clock.h>
 #include <linux/sched/debug.h>
 #include <linux/sched/task_stack.h>
@@ -195,6 +196,12 @@ static int __init control_devkmsg(char *str)
 	return 1;
 }
 __setup("printk.devkmsg=", control_devkmsg);
+
+int clamp_loglevel(int level)
+{
+	return clamp(level, minimum_console_loglevel,
+		     CONSOLE_LOGLEVEL_MOTORMOUTH);
+}
 
 char devkmsg_log_str[DEVKMSG_STR_MAX_SIZE] = "ratelimit";
 #if defined(CONFIG_PRINTK) && defined(CONFIG_SYSCTL)
@@ -833,7 +840,7 @@ static ssize_t devkmsg_read(struct file *file, char __user *buf,
 	if (ret)
 		return ret;
 
-	if (!printk_get_next_message(&pmsg, atomic64_read(&user->seq), true, false)) {
+	if (!printk_get_next_message(&pmsg, NULL, atomic64_read(&user->seq))) {
 		if (file->f_flags & O_NONBLOCK) {
 			ret = -EAGAIN;
 			goto out;
@@ -850,8 +857,7 @@ static ssize_t devkmsg_read(struct file *file, char __user *buf,
 		 * This pairs with __wake_up_klogd:A.
 		 */
 		ret = wait_event_interruptible(log_wait,
-				printk_get_next_message(&pmsg, atomic64_read(&user->seq), true,
-							false)); /* LMM(devkmsg_read:A) */
+				printk_get_next_message(&pmsg, NULL, atomic64_read(&user->seq))); /* LMM(devkmsg_read:A) */
 		if (ret)
 			goto out;
 	}
@@ -1272,7 +1278,8 @@ err_free_log_buf:
 	memblock_free(new_log_buf, new_log_buf_len);
 }
 
-static bool __read_mostly ignore_loglevel;
+
+bool __read_mostly ignore_loglevel;
 
 static int __init ignore_loglevel_setup(char *str)
 {
@@ -1287,9 +1294,86 @@ module_param(ignore_loglevel, bool, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(ignore_loglevel,
 		 "ignore loglevel setting (prints all kernel messages to the console)");
 
-static bool suppress_message_printing(int level)
+bool __read_mostly ignore_per_console_loglevel;
+
+static int __init ignore_per_console_loglevel_setup(char *str)
 {
-	return (level >= console_loglevel && !ignore_loglevel);
+	ignore_per_console_loglevel = true;
+	return 0;
+}
+
+early_param("ignore_per_console_loglevel", ignore_per_console_loglevel_setup);
+module_param(ignore_per_console_loglevel, bool, 0644);
+MODULE_PARM_DESC(
+	ignore_per_console_loglevel,
+	"ignore per-console loglevel setting (only respect global console loglevel)");
+
+bool per_console_loglevel_is_set(const struct console *con)
+{
+	return !ignore_per_console_loglevel && con && (READ_ONCE(con->level) > 0);
+}
+
+/*
+ * Hierarchy of loglevel authority:
+ *
+ * 1. con->level. The locally set, console-specific loglevel. Optional, only
+ *    valid if >0.
+ * 2. console_loglevel. The default global console loglevel, always present.
+ *
+ * The behaviour can be further changed by the following printk module
+ * parameters:
+ *
+ * 1. ignore_loglevel. Can be set at boot or at runtime with
+ *    /sys/module/printk/parameters/ignore_loglevel. Overrides absolutely
+ *    everything since it's used to debug.
+ * 2. ignore_per_console_loglevel. Existing per-console loglevel values are left
+ *    intact, but are ignored in favour of console_loglevel as long as this is
+ *    true. Also manipulated through syslog(SYSLOG_ACTION_CONSOLE_{ON,OFF}).
+ */
+enum loglevel_source
+console_effective_loglevel_source(const struct console *con)
+{
+	if (WARN_ON_ONCE(!con))
+		return LLS_GLOBAL;
+
+	if (ignore_loglevel)
+		return LLS_IGNORE_LOGLEVEL;
+
+	if (per_console_loglevel_is_set(con))
+		return LLS_LOCAL;
+
+	return LLS_GLOBAL;
+}
+
+int console_effective_loglevel(const struct console *con)
+{
+	enum loglevel_source source;
+	int level;
+
+	source = console_effective_loglevel_source(con);
+
+	switch (source) {
+	case LLS_IGNORE_LOGLEVEL:
+		level = CONSOLE_LOGLEVEL_MOTORMOUTH;
+		break;
+	case LLS_LOCAL:
+		level = READ_ONCE(con->level);
+		break;
+	case LLS_GLOBAL:
+		level = console_loglevel;
+		break;
+	default:
+		pr_warn("Unhandled console loglevel source: %d", source);
+		level = default_console_loglevel;
+		break;
+	}
+
+	return level;
+}
+
+static bool suppress_message_printing(int level, struct console *con)
+{
+	return level >= console_effective_loglevel(con);
 }
 
 #ifdef CONFIG_BOOT_PRINTK_DELAY
@@ -1743,6 +1827,7 @@ int do_syslog(int type, char __user *buf, int len, int source)
 	struct printk_info info;
 	bool clear = false;
 	static int saved_console_loglevel = LOGLEVEL_DEFAULT;
+	static int saved_ignore_per_console_loglevel;
 	int error;
 
 	error = check_syslog_permissions(type, source);
@@ -1783,19 +1868,28 @@ int do_syslog(int type, char __user *buf, int len, int source)
 		break;
 	/* Disable logging to console */
 	case SYSLOG_ACTION_CONSOLE_OFF:
-		if (saved_console_loglevel == LOGLEVEL_DEFAULT)
+		if (saved_console_loglevel == LOGLEVEL_DEFAULT) {
 			saved_console_loglevel = console_loglevel;
+			saved_ignore_per_console_loglevel =
+				ignore_per_console_loglevel;
+		}
 		console_loglevel = minimum_console_loglevel;
+		ignore_per_console_loglevel = true;
 		break;
 	/* Enable logging to console */
 	case SYSLOG_ACTION_CONSOLE_ON:
 		if (saved_console_loglevel != LOGLEVEL_DEFAULT) {
 			console_loglevel = saved_console_loglevel;
+			ignore_per_console_loglevel =
+				saved_ignore_per_console_loglevel;
 			saved_console_loglevel = LOGLEVEL_DEFAULT;
 		}
 		break;
 	/* Set level of messages printed to console */
 	case SYSLOG_ACTION_CONSOLE_LEVEL:
+		if (!ignore_per_console_loglevel)
+			pr_warn_once(
+				"SYSLOG_ACTION_CONSOLE_LEVEL is ignored by consoles with an explicitly set per-console loglevel, see Documentation/admin-guide/per-console-loglevel.rst\n");
 		if (len < 1 || len > 8)
 			return -EINVAL;
 		if (len < minimum_console_loglevel)
@@ -2122,7 +2216,21 @@ int printk_delay_msec __read_mostly;
 
 static inline void printk_delay(int level)
 {
-	if (suppress_message_printing(level))
+	bool will_emit = false;
+	int cookie;
+	struct console *con;
+
+	cookie = console_srcu_read_lock();
+
+	for_each_console_srcu(con) {
+		if (!suppress_message_printing(level, con)) {
+			will_emit = true;
+			break;
+		}
+	}
+	console_srcu_read_unlock(cookie);
+
+	if (!will_emit)
 		return;
 
 	boot_delay_msec();
@@ -2489,12 +2597,84 @@ static void set_user_specified(struct console_cmdline *c, bool user_specified)
 	console_set_on_cmdline = 1;
 }
 
+static bool find_and_remove_console_option(char *options, const char *key,
+					   char *val_buf, size_t val_buf_size)
+{
+	bool found = false, first = true;
+	char *option, *next = options;
+
+	while ((option = strsep(&next, ","))) {
+		char *value;
+
+		value = strchr(option, ':');
+		if (value)
+			*(value++) = '\0';
+
+		if (strcmp(option, key) == 0) {
+			found = true;
+			if (value) {
+				if (strlen(value) >= val_buf_size) {
+					pr_warn("Can't copy console option value for %s:%s: not enough space (%zu)\n",
+						option, value, val_buf_size);
+					found = false;
+				} else {
+					strscpy(val_buf, value, val_buf_size);
+				}
+			} else
+				*val_buf = '\0';
+		}
+
+		if (found)
+			break;
+
+		if (next)
+			*(next - 1) = ',';
+		if (value)
+			*(value - 1) = ':';
+
+		first = false;
+	}
+
+	if (found) {
+		if (next)
+			memmove(option, next, strlen(next) + 1);
+		else if (first)
+			*option = '\0';
+		else
+			*--option = '\0';
+	}
+
+	return found;
+}
+
+static int find_and_remove_loglevel_option(char *options)
+{
+	char val[16];
+	int loglevel;
+
+	if (!find_and_remove_console_option(options, "loglevel", val,
+					    sizeof(val)))
+		return -ENOENT;
+
+	if (kstrtoint(val, 10, &loglevel)) {
+		pr_warn("Invalid console loglevel, ignoring: %s\n", val);
+		return -EINVAL;
+	}
+
+	if (clamp_loglevel(loglevel) != loglevel) {
+		pr_warn("Per-console loglevel out of range, ignoring: %d\n", loglevel);
+		return -ERANGE;
+	}
+
+	return loglevel;
+}
+
 static int __add_preferred_console(const char *name, const short idx,
 				   const char *devname, char *options,
 				   char *brl_options, bool user_specified)
 {
 	struct console_cmdline *c;
-	int i;
+	int i, ret;
 
 	if (!name && !devname)
 		return -EINVAL;
@@ -2531,6 +2711,13 @@ static int __add_preferred_console(const char *name, const short idx,
 		strscpy(c->name, name);
 	if (devname)
 		strscpy(c->devname, devname);
+
+	ret = find_and_remove_loglevel_option(options);
+	if (ret >= 0)
+		c->level = ret;
+	else
+		c->level = -1;
+
 	c->options = options;
 	set_user_specified(c, user_specified);
 	braille_set_options(c, brl_options);
@@ -2925,20 +3112,19 @@ void console_prepend_replay(struct printk_message *pmsg)
  * @pmsg will contain the formatted result. @pmsg->pbufs must point to a
  * struct printk_buffers.
  *
+ * @con is the console in question. Only @con->flags and @con->level are
+ * guaranteed to be valid at this point. Note especially well that con->seq is
+ * not yet guaranteed to be consistent with @seq.
+ *
  * @seq is the record to read and format. If it is not available, the next
  * valid record is read.
- *
- * @is_extended specifies if the message should be formatted for extended
- * console output.
- *
- * @may_supress specifies if records may be skipped based on loglevel.
  *
  * Returns false if no record is available. Otherwise true and all fields
  * of @pmsg are valid. (See the documentation of struct printk_message
  * for information about the @pmsg fields.)
  */
-bool printk_get_next_message(struct printk_message *pmsg, u64 seq,
-			     bool is_extended, bool may_suppress)
+bool printk_get_next_message(struct printk_message *pmsg, struct console *con,
+			     u64 seq)
 {
 	struct printk_buffers *pbufs = pmsg->pbufs;
 	const size_t scratchbuf_sz = sizeof(pbufs->scratchbuf);
@@ -2948,6 +3134,14 @@ bool printk_get_next_message(struct printk_message *pmsg, u64 seq,
 	struct printk_info info;
 	struct printk_record r;
 	size_t len = 0;
+	bool is_extended;
+
+	if (con) {
+		is_extended = console_srcu_read_flags(con) & CON_EXTENDED;
+	} else {
+		/* Used only by devkmsg_read(). */
+		is_extended = true;
+	}
 
 	/*
 	 * Formatting extended messages requires a separate buffer, so use the
@@ -2967,8 +3161,8 @@ bool printk_get_next_message(struct printk_message *pmsg, u64 seq,
 	pmsg->seq = r.info->seq;
 	pmsg->dropped = r.info->seq - seq;
 
-	/* Skip record that has level above the console loglevel. */
-	if (may_suppress && suppress_message_printing(r.info->level))
+	/* Never suppress when used in devkmsg_read() */
+	if (con && suppress_message_printing(r.info->level, con))
 		goto out;
 
 	if (is_extended) {
@@ -3044,7 +3238,7 @@ static bool console_emit_next_record(struct console *con, bool *handover, int co
 
 	*handover = false;
 
-	if (!printk_get_next_message(&pmsg, con->seq, is_extended, true))
+	if (!printk_get_next_message(&pmsg, con, con->seq))
 		return false;
 
 	con->dropped += pmsg.dropped;
@@ -3782,6 +3976,13 @@ static int try_enable_preferred_console(struct console *newcon,
 			if (newcon->index < 0)
 				newcon->index = c->index;
 
+			if (c->level > 0)
+				newcon->level = c->level;
+			else
+				newcon->level = -1;
+
+			newcon->classdev = NULL;
+
 			if (_braille_register_console(newcon, c))
 				return 0;
 
@@ -4058,6 +4259,7 @@ void register_console(struct console *newcon)
 	if (use_device_lock)
 		newcon->device_unlock(newcon, flags);
 
+	console_register_device(newcon);
 	console_sysfs_notify();
 
 	/*
@@ -4151,6 +4353,9 @@ static int unregister_console_locked(struct console *console)
 
 	if (console->flags & CON_NBCON)
 		nbcon_free(console);
+
+	if (console->classdev)
+		device_unregister(console->classdev);
 
 	console_sysfs_notify();
 
@@ -4316,6 +4521,9 @@ static int __init printk_late_init(void)
 					console_cpu_notify, NULL);
 	WARN_ON(ret < 0);
 	printk_sysctl_init();
+
+	console_setup_class();
+
 	return 0;
 }
 late_initcall(printk_late_init);

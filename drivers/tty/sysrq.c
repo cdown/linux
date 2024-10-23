@@ -51,6 +51,7 @@
 #include <linux/syscalls.h>
 #include <linux/of.h>
 #include <linux/rcupdate.h>
+#include <linux/console.h>
 
 #include <asm/ptrace.h>
 #include <asm/irq_regs.h>
@@ -101,11 +102,25 @@ __setup("sysrq_always_enabled", sysrq_always_enabled_setup);
 static void sysrq_handle_loglevel(u8 key)
 {
 	u8 loglevel = key - '0';
+	int cookie;
+	int warned = 0;
+	struct console *con;
 
 	console_loglevel = CONSOLE_LOGLEVEL_DEFAULT;
 	pr_info("Loglevel set to %u\n", loglevel);
 	console_loglevel = loglevel;
+
+	cookie = console_srcu_read_lock();
+	for_each_console_srcu(con) {
+		if (!warned && per_console_loglevel_is_set(con)) {
+			warned = 1;
+			pr_warn("Overriding per-console loglevel from sysrq\n");
+		}
+		WRITE_ONCE(con->level, -1);
+	}
+	console_srcu_read_unlock(cookie);
 }
+
 static const struct sysrq_key_op sysrq_loglevel_op = {
 	.handler	= sysrq_handle_loglevel,
 	.help_msg	= "loglevel(0-9)",
@@ -583,6 +598,7 @@ static void __sysrq_put_key_op(u8 key, const struct sysrq_key_op *op_p)
 void __handle_sysrq(u8 key, bool check_mask)
 {
 	const struct sysrq_key_op *op_p;
+	bool orig_ignore_per_console_loglevel;
 	int orig_log_level;
 	int orig_suppress_printk;
 	int i;
@@ -600,6 +616,9 @@ void __handle_sysrq(u8 key, bool check_mask)
 	 */
 	orig_log_level = console_loglevel;
 	console_loglevel = CONSOLE_LOGLEVEL_DEFAULT;
+
+	orig_ignore_per_console_loglevel = ignore_per_console_loglevel;
+	ignore_per_console_loglevel = true;
 
 	op_p = __sysrq_get_key_op(key);
 	if (op_p) {
@@ -636,6 +655,7 @@ void __handle_sysrq(u8 key, bool check_mask)
 	rcu_read_unlock();
 	rcu_sysrq_end();
 
+	ignore_per_console_loglevel = orig_ignore_per_console_loglevel;
 	suppress_printk = orig_suppress_printk;
 }
 
