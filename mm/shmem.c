@@ -1393,6 +1393,7 @@ static void shmem_evict_inode(struct inode *inode)
 #endif
 }
 
+#define SHMEM_SWAP_ANY ((unsigned int)-1)
 static unsigned int shmem_find_swap_entries(struct address_space *mapping,
 				pgoff_t start, struct folio_batch *fbatch,
 				pgoff_t *indices, unsigned int type)
@@ -1414,7 +1415,7 @@ static unsigned int shmem_find_swap_entries(struct address_space *mapping,
 		 * swapin error entries can be found in the mapping. But they're
 		 * deliberately ignored here as we've done everything we can do.
 		 */
-		if (swp_type(entry) != type)
+		if (type != SHMEM_SWAP_ANY && swp_type(entry) != type)
 			continue;
 
 		indices[folio_batch_count(fbatch)] = xas.xa_index;
@@ -1557,7 +1558,8 @@ int shmem_writeout(struct folio *folio, struct writeback_control *wbc)
 	if (WARN_ON_ONCE(!wbc->for_reclaim))
 		goto redirty;
 
-	if ((info->flags & VM_LOCKED) || sbinfo->noswap)
+	if ((info->flags & VM_LOCKED) || (info->fsflags & FS_NOSWAP_FL) ||
+	    sbinfo->noswap)
 		goto redirty;
 
 	if (!total_swap_pages)
@@ -4196,27 +4198,50 @@ static int shmem_fileattr_get(struct dentry *dentry, struct fileattr *fa)
 	return 0;
 }
 
-static int shmem_fileattr_set(struct mnt_idmap *idmap,
-			      struct dentry *dentry, struct fileattr *fa)
+static int shmem_fileattr_set(struct mnt_idmap *idmap, struct dentry *dentry,
+			      struct fileattr *fa)
 {
 	struct inode *inode = d_inode(dentry);
 	struct shmem_inode_info *info = SHMEM_I(inode);
-	int ret, flags;
+	unsigned int old_fsflags = info->fsflags;
+	unsigned int new_fsflags;
+	bool enable_noswap, disable_noswap;
+	int ret;
 
 	if (fileattr_has_fsx(fa))
 		return -EOPNOTSUPP;
 	if (fa->flags & ~SHMEM_FL_USER_MODIFIABLE)
 		return -EOPNOTSUPP;
 
-	flags = (info->fsflags & ~SHMEM_FL_USER_MODIFIABLE) |
-		(fa->flags & SHMEM_FL_USER_MODIFIABLE);
+	new_fsflags = (old_fsflags & ~SHMEM_FL_USER_MODIFIABLE) |
+		      (fa->flags & SHMEM_FL_USER_MODIFIABLE);
+	if (new_fsflags == old_fsflags)
+		return 0;
 
-	ret = shmem_set_inode_flags(inode, flags, dentry);
+	enable_noswap = !(old_fsflags & FS_NOSWAP_FL) &&
+			(new_fsflags & FS_NOSWAP_FL);
+	disable_noswap = (old_fsflags & FS_NOSWAP_FL) &&
+			 !(new_fsflags & FS_NOSWAP_FL);
 
-	if (ret)
-		return ret;
+	if ((enable_noswap || disable_noswap) && !capable(CAP_SYS_RESOURCE))
+		return -EPERM;
 
-	info->fsflags = flags;
+	if (disable_noswap)
+		mapping_clear_unevictable(inode->i_mapping);
+
+	info->fsflags = new_fsflags;
+	shmem_set_inode_flags(inode, new_fsflags, dentry);
+
+	if (enable_noswap) {
+		mapping_set_unevictable(inode->i_mapping);
+		ret = shmem_unuse_inode(inode, SHMEM_SWAP_ANY);
+		if (ret < 0) {
+			mapping_clear_unevictable(inode->i_mapping);
+			info->fsflags = old_fsflags;
+			shmem_set_inode_flags(inode, old_fsflags, dentry);
+			return ret;
+		}
+	}
 
 	inode_set_ctime_current(inode);
 	inode_inc_iversion(inode);
