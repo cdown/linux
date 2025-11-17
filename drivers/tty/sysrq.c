@@ -51,6 +51,7 @@
 #include <linux/syscalls.h>
 #include <linux/of.h>
 #include <linux/rcupdate.h>
+#include <linux/console.h>
 
 #include <asm/ptrace.h>
 #include <asm/irq_regs.h>
@@ -105,6 +106,13 @@ static void sysrq_handle_loglevel(u8 key)
 	console_loglevel = CONSOLE_LOGLEVEL_DEFAULT;
 	pr_info("Loglevel set to %u\n", loglevel);
 	console_loglevel = loglevel;
+
+	/*
+	 * The sysrq core already forces ignore_per_console_loglevel = true
+	 * while the handler executes, so every console honours the newly-set
+	 * global level without mutating per-console configuration. Leave each
+	 * console's level untouched so administrators keep their saved tuning.
+	 */
 }
 static const struct sysrq_key_op sysrq_loglevel_op = {
 	.handler	= sysrq_handle_loglevel,
