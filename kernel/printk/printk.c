@@ -4168,6 +4168,9 @@ void register_console(struct console *newcon)
 	u64 init_seq;
 	int err;
 
+	if (newcon->level == 0)
+		newcon->level = LOGLEVEL_DEFAULT;
+
 	console_list_lock();
 
 	for_each_console(con) {
@@ -4302,6 +4305,7 @@ void register_console(struct console *newcon)
 	if (use_device_lock)
 		newcon->device_unlock(newcon, flags);
 
+	console_register_device(newcon);
 	console_sysfs_notify();
 
 	/*
@@ -4416,6 +4420,12 @@ static int unregister_console_locked(struct console *console)
 	/* @have_nbcon_console must be updated before calling nbcon_free(). */
 	if (console->flags & CON_NBCON)
 		nbcon_free(console);
+
+	if (console->classdev) {
+		struct device *dev = console->classdev;
+		console->classdev = NULL;
+		device_unregister(dev);
+	}
 
 	console_sysfs_notify();
 
@@ -4566,6 +4576,9 @@ static int __init printk_late_init(void)
 					console_cpu_notify, NULL);
 	WARN_ON(ret < 0);
 	printk_sysctl_init();
+
+	console_setup_class();
+
 	return 0;
 }
 late_initcall(printk_late_init);
