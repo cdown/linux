@@ -104,6 +104,9 @@ DEFINE_STATIC_SRCU(console_srcu);
  */
 int __read_mostly suppress_printk;
 
+/* The sysrq infrastructure needs this even on !CONFIG_PRINTK. */
+bool __read_mostly ignore_per_console_loglevel;
+
 #ifdef CONFIG_LOCKDEP
 static struct lockdep_map console_lock_dep_map = {
 	.name = "console_lock"
@@ -1297,9 +1300,21 @@ module_param(ignore_loglevel, bool, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(ignore_loglevel,
 		 "ignore loglevel setting (prints all kernel messages to the console)");
 
+static int __init ignore_per_console_loglevel_setup(char *str)
+{
+	ignore_per_console_loglevel = true;
+	return 0;
+}
+
+early_param("ignore_per_console_loglevel", ignore_per_console_loglevel_setup);
+module_param(ignore_per_console_loglevel, bool, 0644);
+MODULE_PARM_DESC(
+	ignore_per_console_loglevel,
+	"ignore per-console loglevel setting (only respect global console loglevel)");
+
 bool has_per_console_loglevel(const struct console *con)
 {
-	return con && (console_srcu_read_loglevel(con) > 0);
+	return !ignore_per_console_loglevel && con && (console_srcu_read_loglevel(con) > 0);
 }
 
 /**
@@ -1338,7 +1353,7 @@ console_effective_loglevel_source(int con_level)
 	if (ignore_loglevel)
 		return LLS_IGNORE_LOGLEVEL;
 
-	if (is_valid_per_console_loglevel(con_level))
+	if (!ignore_per_console_loglevel && is_valid_per_console_loglevel(con_level))
 		return LLS_LOCAL;
 
 	return LLS_GLOBAL;
@@ -1860,6 +1875,7 @@ int do_syslog(int type, char __user *buf, int len, int source)
 	struct printk_info info;
 	bool clear = false;
 	static int saved_console_loglevel = LOGLEVEL_DEFAULT;
+	static bool saved_ignore_per_console_loglevel;
 	int error;
 
 	error = check_syslog_permissions(type, source);
@@ -1900,19 +1916,34 @@ int do_syslog(int type, char __user *buf, int len, int source)
 		break;
 	/* Disable logging to console */
 	case SYSLOG_ACTION_CONSOLE_OFF:
-		if (saved_console_loglevel == LOGLEVEL_DEFAULT)
+		/*
+		 * Note: saved_console_loglevel and saved_ignore_per_console_loglevel
+		 * are static variables shared across all processes. This means there
+		 * is a potential race condition if multiple processes call CONSOLE_OFF
+		 * concurrently. However, this matches the existing legacy behavior for
+		 * saved_console_loglevel (which was already static before this change),
+		 * so we maintain consistency with the original implementation.
+		 */
+		if (saved_console_loglevel == LOGLEVEL_DEFAULT) {
 			saved_console_loglevel = console_loglevel;
+			saved_ignore_per_console_loglevel = ignore_per_console_loglevel;
+		}
 		console_loglevel = minimum_console_loglevel;
+		ignore_per_console_loglevel = true;
 		break;
 	/* Enable logging to console */
 	case SYSLOG_ACTION_CONSOLE_ON:
 		if (saved_console_loglevel != LOGLEVEL_DEFAULT) {
 			console_loglevel = saved_console_loglevel;
+			ignore_per_console_loglevel = saved_ignore_per_console_loglevel;
 			saved_console_loglevel = LOGLEVEL_DEFAULT;
 		}
 		break;
 	/* Set level of messages printed to console */
 	case SYSLOG_ACTION_CONSOLE_LEVEL:
+		if (!ignore_per_console_loglevel)
+			pr_warn_once(
+				"SYSLOG_ACTION_CONSOLE_LEVEL is ignored by consoles with an explicitly set per-console loglevel, see Documentation/admin-guide/per-console-loglevel.rst\n");
 		if (len < 1 || len > 8)
 			return -EINVAL;
 		if (len < minimum_console_loglevel)
