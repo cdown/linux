@@ -961,6 +961,7 @@ static bool nbcon_emit_next_record(struct nbcon_write_context *wctxt, bool use_a
 	struct nbcon_context *ctxt = &ACCESS_PRIVATE(wctxt, ctxt);
 	struct console *con = ctxt->console;
 	bool is_extended = console_srcu_read_flags(con) & CON_EXTENDED;
+	int con_level = console_srcu_read_loglevel(con);
 	struct printk_message pmsg = {
 		.pbufs = ctxt->pbufs,
 	};
@@ -993,7 +994,8 @@ static bool nbcon_emit_next_record(struct nbcon_write_context *wctxt, bool use_a
 	if (!nbcon_context_enter_unsafe(ctxt))
 		return false;
 
-	ctxt->backlog = printk_get_next_message(&pmsg, ctxt->seq, is_extended, console_loglevel);
+	ctxt->backlog = printk_get_next_message(&pmsg, ctxt->seq, is_extended,
+						console_effective_loglevel(con_level));
 	if (!ctxt->backlog)
 		return nbcon_context_exit_unsafe(ctxt);
 
@@ -1498,15 +1500,29 @@ static int __nbcon_atomic_flush_pending_con(struct console *con, u64 stop_seq,
 {
 	struct nbcon_write_context wctxt = { };
 	struct nbcon_context *ctxt = &ACCESS_PRIVATE(&wctxt, ctxt);
+	bool ctx_acquired = false;
 	int err = 0;
+	int cookie;
 
 	ctxt->console			= con;
 	ctxt->spinwait_max_us		= 2000;
 	ctxt->prio			= nbcon_get_default_prio();
 	ctxt->allow_unsafe_takeover	= allow_unsafe_takeover;
 
-	if (!nbcon_context_try_acquire(ctxt, false))
-		return -EPERM;
+	/*
+	 * Match the console_srcu_read_lock()/unlock expectation embedded in
+	 * console_srcu_read_loglevel()/console_srcu_read_flags(), both of which
+	 * are called from nbcon_emit_next_record(). Without this,
+	 * unregister_console() cannot synchronise against the atomic flusher.
+	 */
+	cookie = console_srcu_read_lock();
+
+	if (!nbcon_context_try_acquire(ctxt, false)) {
+		err = -EPERM;
+		goto out_unlock;
+	}
+
+	ctx_acquired = true;
 
 	while (nbcon_seq_read(con) < stop_seq) {
 		/*
@@ -1514,8 +1530,11 @@ static int __nbcon_atomic_flush_pending_con(struct console *con, u64 stop_seq,
 		 * handed over or taken over. In both cases the context is no
 		 * longer valid.
 		 */
-		if (!nbcon_emit_next_record(&wctxt, true))
-			return -EAGAIN;
+		if (!nbcon_emit_next_record(&wctxt, true)) {
+			err = -EAGAIN;
+			ctx_acquired = false;
+			goto out_unlock;
+		}
 
 		if (!ctxt->backlog) {
 			/* Are there reserved but not yet finalized records? */
@@ -1525,7 +1544,10 @@ static int __nbcon_atomic_flush_pending_con(struct console *con, u64 stop_seq,
 		}
 	}
 
-	nbcon_context_release(ctxt);
+out_unlock:
+	if (ctx_acquired)
+		nbcon_context_release(ctxt);
+	console_srcu_read_unlock(cookie);
 	return err;
 }
 
