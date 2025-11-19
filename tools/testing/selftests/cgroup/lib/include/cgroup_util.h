@@ -72,6 +72,7 @@ extern int cg_run(const char *cgroup,
 		  int (*fn)(const char *cgroup, void *arg),
 		  void *arg);
 extern int cg_enter(const char *cgroup, int pid);
+extern int cg_enter_pidfd(const char *cgroup, int pidfd);
 extern int cg_enter_current(const char *cgroup);
 extern int cg_enter_current_thread(const char *cgroup);
 extern int cg_run_nowait(const char *cgroup,

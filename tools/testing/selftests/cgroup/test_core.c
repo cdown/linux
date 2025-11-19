@@ -19,6 +19,7 @@
 
 #include "kselftest.h"
 #include "cgroup_util.h"
+#include "../pidfd/pidfd.h"
 
 static bool nsdelegate;
 #ifndef CLONE_NEWCGROUP
@@ -900,6 +901,362 @@ static void cleanup_named_v1_root(char *root)
 	rmdir(root);
 }
 
+/*
+ * Test PIDFD migration - basic functionality.
+ * Migrate a process using PIDFD instead of PID.
+ */
+static int test_cgcore_pidfd_migration(const char *root)
+{
+	int ret = KSFT_FAIL;
+	char *cg_test = NULL;
+	pid_t child_pid;
+	int pidfd = -1;
+	char buf[PAGE_SIZE];
+	pid_t found_pid;
+
+	if (cg_test_v1_named)
+		return KSFT_SKIP;
+
+	cg_test = cg_name(root, "cg_test_pidfd");
+	if (!cg_test)
+		goto cleanup;
+
+	if (cg_create(cg_test))
+		goto cleanup;
+
+	/* Fork a child process */
+	child_pid = fork();
+	if (child_pid < 0)
+		goto cleanup;
+
+	if (child_pid == 0) {
+		/* Child: sleep until killed */
+		pause();
+		exit(EXIT_SUCCESS);
+	}
+
+	/* Get PIDFD for the child */
+	pidfd = sys_pidfd_open(child_pid, 0);
+	if (pidfd < 0) {
+		if (errno == ENOSYS)
+			goto cleanup_pass;
+		goto cleanup;
+	}
+
+	/* Migrate child using PIDFD */
+	if (cg_enter_pidfd(cg_test, pidfd))
+		goto cleanup;
+
+	/* Verify migration by reading cgroup.procs */
+	if (cg_read(cg_test, "cgroup.procs", buf, sizeof(buf)))
+		goto cleanup;
+
+	found_pid = atoi(buf);
+	if (found_pid != child_pid)
+		goto cleanup;
+
+	ret = KSFT_PASS;
+
+cleanup:
+	if (pidfd >= 0)
+		close(pidfd);
+	if (child_pid > 0) {
+		kill(child_pid, SIGKILL);
+		waitpid(child_pid, NULL, 0);
+	}
+	if (cg_test)
+		cg_destroy(cg_test);
+	free(cg_test);
+	return ret;
+
+cleanup_pass:
+	ret = KSFT_SKIP;
+	goto cleanup;
+}
+
+/*
+ * Test PIDFD migration between cgroups.
+ * Migrate a process from one cgroup to another using PIDFD.
+ */
+static int test_cgcore_pidfd_migration_between_cgroups(const char *root)
+{
+	int ret = KSFT_FAIL;
+	char *cg_src = NULL, *cg_dst = NULL;
+	pid_t child_pid;
+	int pidfd = -1;
+	char buf[PAGE_SIZE];
+	pid_t found_pid;
+
+	if (cg_test_v1_named)
+		return KSFT_SKIP;
+
+	cg_src = cg_name(root, "cg_src_pidfd");
+	cg_dst = cg_name(root, "cg_dst_pidfd");
+	if (!cg_src || !cg_dst)
+		goto cleanup;
+
+	if (cg_create(cg_src))
+		goto cleanup;
+	if (cg_create(cg_dst))
+		goto cleanup;
+
+	/* Fork a child and put it in source cgroup */
+	child_pid = fork();
+	if (child_pid < 0)
+		goto cleanup;
+
+	if (child_pid == 0) {
+		pause();
+		exit(EXIT_SUCCESS);
+	}
+
+	if (cg_enter(cg_src, child_pid))
+		goto cleanup;
+
+	/* Verify child is in source cgroup */
+	if (cg_read(cg_src, "cgroup.procs", buf, sizeof(buf)))
+		goto cleanup;
+	found_pid = atoi(buf);
+	if (found_pid != child_pid)
+		goto cleanup;
+
+	/* Get PIDFD and migrate to destination */
+	pidfd = sys_pidfd_open(child_pid, 0);
+	if (pidfd < 0) {
+		if (errno == ENOSYS)
+			goto cleanup_pass;
+		goto cleanup;
+	}
+
+	if (cg_enter_pidfd(cg_dst, pidfd))
+		goto cleanup;
+
+	/* Verify child is now in destination cgroup */
+	if (cg_read(cg_dst, "cgroup.procs", buf, sizeof(buf)))
+		goto cleanup;
+	found_pid = atoi(buf);
+	if (found_pid != child_pid)
+		goto cleanup;
+
+	/* Verify source cgroup is empty */
+	if (cg_read(cg_src, "cgroup.procs", buf, sizeof(buf)))
+		goto cleanup;
+	if (buf[0] != '\0')
+		goto cleanup;
+
+	ret = KSFT_PASS;
+
+cleanup:
+	if (pidfd >= 0)
+		close(pidfd);
+	if (child_pid > 0) {
+		kill(child_pid, SIGKILL);
+		waitpid(child_pid, NULL, 0);
+	}
+	if (cg_dst)
+		cg_destroy(cg_dst);
+	if (cg_src)
+		cg_destroy(cg_src);
+	free(cg_dst);
+	free(cg_src);
+	return ret;
+
+cleanup_pass:
+	ret = KSFT_SKIP;
+	goto cleanup;
+}
+
+/*
+ * Test backward compatibility - PID format still works.
+ */
+static int test_cgcore_pidfd_backward_compat(const char *root)
+{
+	int ret = KSFT_FAIL;
+	char *cg_test = NULL;
+	pid_t child_pid;
+	char buf[PAGE_SIZE];
+	pid_t found_pid;
+
+	if (cg_test_v1_named)
+		return KSFT_SKIP;
+
+	cg_test = cg_name(root, "cg_test_pid_compat");
+	if (!cg_test)
+		goto cleanup;
+
+	if (cg_create(cg_test))
+		goto cleanup;
+
+	child_pid = fork();
+	if (child_pid < 0)
+		goto cleanup;
+
+	if (child_pid == 0) {
+		pause();
+		exit(EXIT_SUCCESS);
+	}
+
+	/* Use regular PID format (backward compatibility) */
+	if (cg_enter(cg_test, child_pid))
+		goto cleanup;
+
+	/* Verify migration */
+	if (cg_read(cg_test, "cgroup.procs", buf, sizeof(buf)))
+		goto cleanup;
+	found_pid = atoi(buf);
+	if (found_pid != child_pid)
+		goto cleanup;
+
+	ret = KSFT_PASS;
+
+cleanup:
+	if (child_pid > 0) {
+		kill(child_pid, SIGKILL);
+		waitpid(child_pid, NULL, 0);
+	}
+	if (cg_test)
+		cg_destroy(cg_test);
+	free(cg_test);
+	return ret;
+}
+
+/*
+ * Test error handling - invalid PIDFD.
+ */
+static int test_cgcore_pidfd_invalid(const char *root)
+{
+	int ret = KSFT_FAIL;
+	char *cg_test = NULL;
+	char *procs_path = NULL;
+	int fd;
+
+	if (cg_test_v1_named)
+		return KSFT_SKIP;
+
+	cg_test = cg_name(root, "cg_test_pidfd_invalid");
+	if (!cg_test)
+		goto cleanup;
+
+	if (cg_create(cg_test))
+		goto cleanup;
+
+	procs_path = cg_control(cg_test, "cgroup.procs");
+	if (!procs_path)
+		goto cleanup;
+
+	fd = open(procs_path, O_WRONLY);
+	if (fd < 0)
+		goto cleanup;
+
+	/* Test invalid PIDFD number */
+	if (write(fd, "pidfd:99999", 11) >= 0)
+		goto cleanup;
+
+	/* Test incomplete format */
+	if (lseek(fd, 0, SEEK_SET) < 0)
+		goto cleanup;
+	if (write(fd, "pidfd:", 6) >= 0)
+		goto cleanup;
+
+	/* Test negative PIDFD */
+	if (lseek(fd, 0, SEEK_SET) < 0)
+		goto cleanup;
+	if (write(fd, "pidfd:-1", 8) >= 0)
+		goto cleanup;
+
+	/* Test non-numeric PIDFD */
+	if (lseek(fd, 0, SEEK_SET) < 0)
+		goto cleanup;
+	if (write(fd, "pidfd:abc", 9) >= 0)
+		goto cleanup;
+
+	close(fd);
+	ret = KSFT_PASS;
+
+cleanup:
+	if (procs_path)
+		free(procs_path);
+	if (cg_test)
+		cg_destroy(cg_test);
+	free(cg_test);
+	return ret;
+}
+
+/*
+ * Test error handling - closed PIDFD.
+ */
+static int test_cgcore_pidfd_closed(const char *root)
+{
+	int ret = KSFT_FAIL;
+	char *cg_test = NULL;
+	pid_t child_pid;
+	int pidfd = -1;
+	char pidfd_str[64];
+	char *procs_path = NULL;
+	int fd;
+
+	if (cg_test_v1_named)
+		return KSFT_SKIP;
+
+	cg_test = cg_name(root, "cg_test_pidfd_closed");
+	if (!cg_test)
+		goto cleanup;
+
+	if (cg_create(cg_test))
+		goto cleanup;
+
+	child_pid = fork();
+	if (child_pid < 0)
+		goto cleanup;
+
+	if (child_pid == 0) {
+		pause();
+		exit(EXIT_SUCCESS);
+	}
+
+	pidfd = sys_pidfd_open(child_pid, 0);
+	if (pidfd < 0) {
+		if (errno == ENOSYS)
+			goto cleanup_pass;
+		goto cleanup;
+	}
+
+	/* Close the PIDFD */
+	close(pidfd);
+
+	/* Try to use closed PIDFD */
+	procs_path = cg_control(cg_test, "cgroup.procs");
+	if (!procs_path)
+		goto cleanup;
+
+	fd = open(procs_path, O_WRONLY);
+	if (fd < 0)
+		goto cleanup;
+
+	snprintf(pidfd_str, sizeof(pidfd_str), "pidfd:%d", pidfd);
+	if (write(fd, pidfd_str, strlen(pidfd_str)) >= 0)
+		goto cleanup;
+
+	close(fd);
+	ret = KSFT_PASS;
+
+cleanup:
+	if (child_pid > 0) {
+		kill(child_pid, SIGKILL);
+		waitpid(child_pid, NULL, 0);
+	}
+	if (procs_path)
+		free(procs_path);
+	if (cg_test)
+		cg_destroy(cg_test);
+	free(cg_test);
+	return ret;
+
+cleanup_pass:
+	ret = KSFT_SKIP;
+	goto cleanup;
+}
+
 #define T(x) { x, #x }
 struct corecg_test {
 	int (*fn)(const char *root);
@@ -917,6 +1274,11 @@ struct corecg_test {
 	T(test_cgcore_destroy),
 	T(test_cgcore_lesser_euid_open),
 	T(test_cgcore_lesser_ns_open),
+	T(test_cgcore_pidfd_migration),
+	T(test_cgcore_pidfd_migration_between_cgroups),
+	T(test_cgcore_pidfd_backward_compat),
+	T(test_cgcore_pidfd_invalid),
+	T(test_cgcore_pidfd_closed),
 };
 #undef T
 

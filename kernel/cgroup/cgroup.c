@@ -56,6 +56,9 @@
 #include <linux/nsproxy.h>
 #include <linux/file.h>
 #include <linux/fs_parser.h>
+#include <linux/pid.h>
+#include <linux/pid_namespace.h>
+#include <uapi/linux/pidfd.h>
 #include <linux/sched/cputime.h>
 #include <linux/sched/deadline.h>
 #include <linux/psi.h>
@@ -3053,24 +3056,79 @@ struct task_struct *cgroup_procs_write_start(char *buf, bool threadgroup,
 {
 	struct task_struct *tsk;
 	pid_t pid;
+	char *p;
+	int pidfd;
+	unsigned int flags;
+	bool use_pidfd = false;
 
-	if (kstrtoint(strstrip(buf), 0, &pid) || pid < 0)
-		return ERR_PTR(-EINVAL);
+	p = strstrip(buf);
 
-retry_find_task:
-	rcu_read_lock();
-	if (pid) {
-		tsk = find_task_by_vpid(pid);
-		if (!tsk) {
-			tsk = ERR_PTR(-ESRCH);
-			goto out_unlock_rcu;
-		}
+	if (strncmp(p, "pidfd:", 6) == 0) {
+		if (kstrtoint(p + 6, 0, &pidfd) || pidfd < 0)
+			return ERR_PTR(-EINVAL);
+		use_pidfd = true;
 	} else {
-		tsk = current;
+		if (kstrtoint(p, 0, &pid) || pid < 0)
+			return ERR_PTR(-EINVAL);
 	}
 
-	if (threadgroup)
-		tsk = tsk->group_leader;
+retry_find_task:
+	if (use_pidfd) {
+		struct pid *pid_obj;
+		struct pid_namespace *active, *p;
+
+		pid_obj = pidfd_get_pid(pidfd, &flags);
+		if (IS_ERR(pid_obj))
+			return ERR_CAST(pid_obj);
+
+		if (threadgroup && (flags & PIDFD_THREAD)) {
+			put_pid(pid_obj);
+			return ERR_PTR(-EINVAL);
+		}
+
+		active = task_active_pid_ns(current);
+		p = ns_of_pid(pid_obj);
+		for (;;) {
+			if (!p) {
+				put_pid(pid_obj);
+				return ERR_PTR(-EINVAL);
+			}
+			if (p == active)
+				break;
+			p = p->parent;
+		}
+		tsk = get_pid_task(pid_obj, PIDTYPE_PID);
+		put_pid(pid_obj);
+		if (!tsk)
+			return ERR_PTR(-ESRCH);
+
+		if (threadgroup) {
+			struct task_struct *leader;
+			rcu_read_lock();
+			leader = tsk->group_leader;
+			get_task_struct(leader);
+			rcu_read_unlock();
+			put_task_struct(tsk);
+			tsk = leader;
+		}
+	} else {
+		rcu_read_lock();
+		if (pid) {
+			tsk = find_task_by_vpid(pid);
+			if (!tsk) {
+				tsk = ERR_PTR(-ESRCH);
+				goto out_unlock_rcu;
+			}
+		} else {
+			tsk = current;
+		}
+
+		if (threadgroup)
+			tsk = tsk->group_leader;
+
+		get_task_struct(tsk);
+		rcu_read_unlock();
+	}
 
 	/*
 	 * kthreads may acquire PF_NO_SETAFFINITY during initialization.
@@ -3079,11 +3137,9 @@ retry_find_task:
 	 * cgroup with no rt_runtime allocated.  Just say no.
 	 */
 	if (tsk->no_cgroup_migration || (tsk->flags & PF_NO_SETAFFINITY)) {
-		tsk = ERR_PTR(-EINVAL);
-		goto out_unlock_rcu;
+		put_task_struct(tsk);
+		return ERR_PTR(-EINVAL);
 	}
-	get_task_struct(tsk);
-	rcu_read_unlock();
 
 	/*
 	 * If we migrate a single thread, we don't care about threadgroup
@@ -3094,7 +3150,7 @@ retry_find_task:
 	 */
 	lockdep_assert_held(&cgroup_mutex);
 
-	if (pid || threadgroup) {
+	if (use_pidfd || pid || threadgroup) {
 		if (cgroup_enable_per_threadgroup_rwsem)
 			*lock_mode = CGRP_ATTACH_LOCK_PER_THREADGROUP;
 		else

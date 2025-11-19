@@ -356,6 +356,18 @@ int cg_enter(const char *cgroup, int pid)
 	return cg_write(cgroup, "cgroup.procs", pidbuf);
 }
 
+int cg_enter_pidfd(const char *cgroup, int pidfd)
+{
+	char pidfd_str[64];
+	int ret;
+
+	ret = snprintf(pidfd_str, sizeof(pidfd_str), "pidfd:%d", pidfd);
+	if (ret < 0 || ret >= (int)sizeof(pidfd_str))
+		return -1;
+
+	return cg_write(cgroup, "cgroup.procs", pidfd_str);
+}
+
 int cg_enter_current(const char *cgroup)
 {
 	return cg_write(cgroup, "cgroup.procs", "0");

@@ -278,6 +278,14 @@ on a single write(2) call.  If a process is composed of multiple
 threads, writing the PID of any thread migrates all threads of the
 process.
 
+To prevent race conditions with PID recycling when migrating foreign
+processes, a PIDFD can be written instead of a PID.  The format is
+"pidfd:FD_NUM" where FD_NUM is the file descriptor number of a PIDFD
+obtained via pidfd_open(2) or clone(2) with CLONE_PIDFD.  The PIDFD
+must refer to a process in the same PID namespace as the writing process.
+Writing a PIDFD is race-free as the kernel can securely identify the
+target process even if the PID has been recycled.
+
 When a process forks a child process, the new process is born into the
 cgroup that the forking process belongs to at the time of the
 operation.  After exit, a process stays associated with the cgroup
@@ -893,8 +901,16 @@ All cgroup core files are prefixed with "cgroup."
 	reading.
 
 	A PID can be written to migrate the process associated with
-	the PID to the cgroup.  The writer should match all of the
-	following conditions.
+	the PID to the cgroup.  Alternatively, a PIDFD can be written
+	in the format "pidfd:FD_NUM" where FD_NUM is the file descriptor
+	number of a PIDFD obtained via pidfd_open(2) or clone(2) with
+	CLONE_PIDFD.  Writing a PIDFD prevents race conditions with PID
+	recycling when migrating foreign processes, as the kernel can
+	securely identify the target process even if the PID has been
+	recycled.  The PIDFD must refer to a process in the same PID
+	namespace as the writing process.
+
+	The writer should match all of the following conditions.
 
 	- It must have write access to the "cgroup.procs" file.
 
