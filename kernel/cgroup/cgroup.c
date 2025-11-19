@@ -2119,6 +2119,7 @@ static void init_cgroup_housekeeping(struct cgroup *cgrp)
 	cgrp->max_descendants = INT_MAX;
 	cgrp->max_depth = INT_MAX;
 	prev_cputime_init(&cgrp->prev_cputime);
+	atomic64_set(&cgrp->kill_signals_sent, 0);
 
 	for_each_subsys(ss, ssid)
 		INIT_LIST_HEAD(&cgrp->e_csets[ssid]);
@@ -3821,6 +3822,7 @@ static int cgroup_events_show(struct seq_file *seq, void *v)
 
 	seq_printf(seq, "populated %d\n", cgroup_is_populated(cgrp));
 	seq_printf(seq, "frozen %d\n", test_bit(CGRP_FROZEN, &cgrp->flags));
+	seq_printf(seq, "killed_signals %llu\n", atomic64_read(&cgrp->kill_signals_sent));
 
 	return 0;
 }
@@ -4200,6 +4202,7 @@ static void __cgroup_kill(struct cgroup *cgrp)
 			continue;
 
 		send_sig(SIGKILL, task, 0);
+		atomic64_inc(&cgrp->kill_signals_sent);
 	}
 	css_task_iter_end(&it);
 }

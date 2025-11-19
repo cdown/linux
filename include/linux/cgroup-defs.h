@@ -11,6 +11,7 @@
 #include <linux/limits.h>
 #include <linux/list.h>
 #include <linux/idr.h>
+#include <linux/atomic.h>
 #include <linux/wait.h>
 #include <linux/mutex.h>
 #include <linux/rcupdate.h>
@@ -520,6 +521,8 @@ struct cgroup {
 
 	/* sequence number for cgroup.kill, serialized by css_set_lock. */
 	unsigned int kill_seq;
+
+	atomic64_t kill_signals_sent;	/* cumulative count of signals sent via cgroup.kill */
 
 	struct kernfs_node *kn;		/* cgroup kernfs entry */
 	struct cgroup_file procs_file;	/* handle for "cgroup.procs" */
