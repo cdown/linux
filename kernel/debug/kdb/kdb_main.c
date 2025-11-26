@@ -1096,12 +1096,16 @@ static int kdb_reboot(int argc, const char **argv)
 static void kdb_dumpregs(struct pt_regs *regs)
 {
 	int old_lvl = console_loglevel;
+	bool old_ignore = ignore_per_console_loglevel;
+
+	ignore_per_console_loglevel = true;
 	console_loglevel = CONSOLE_LOGLEVEL_MOTORMOUTH;
 	kdb_trap_printk++;
 	show_regs(regs);
 	kdb_trap_printk--;
 	kdb_printf("\n");
 	console_loglevel = old_lvl;
+	ignore_per_console_loglevel = old_ignore;
 }
 
 static void kdb_set_current_task(struct task_struct *p)
