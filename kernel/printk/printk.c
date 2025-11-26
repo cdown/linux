@@ -2913,8 +2913,10 @@ static bool printk_console_no_auto_verbose;
 
 void console_verbose(void)
 {
-	if (console_loglevel && !printk_console_no_auto_verbose)
+	if (console_loglevel && !printk_console_no_auto_verbose) {
 		console_loglevel = CONSOLE_LOGLEVEL_MOTORMOUTH;
+		ignore_per_console_loglevel = true;
+	}
 }
 EXPORT_SYMBOL_GPL(console_verbose);
 
