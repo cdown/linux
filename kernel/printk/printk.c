@@ -2179,6 +2179,24 @@ u16 printk_parse_prefix(const char *text, int *level,
 	return prefix_len;
 }
 
+static inline int printk_resolve_loglevel(int facility, int level,
+					  const char *fmt)
+{
+	if (facility == 0 && fmt) {
+		int parsed_level = level;
+		enum printk_info_flags flags = 0;
+
+		printk_parse_prefix(fmt, &parsed_level, &flags);
+		if (parsed_level != LOGLEVEL_DEFAULT)
+			level = parsed_level;
+	}
+
+	if (level == LOGLEVEL_DEFAULT)
+		level = default_message_loglevel;
+
+	return level;
+}
+
 __printf(5, 0)
 static u16 printk_sprint(char *text, u16 size, int facility,
 			 enum printk_info_flags *flags, const char *fmt,
@@ -2394,7 +2412,7 @@ asmlinkage int vprintk_emit(int facility, int level,
 		ft.legacy_direct = false;
 	}
 
-	printk_delay(level);
+	printk_delay(printk_resolve_loglevel(facility, level, fmt));
 
 	printed_len = vprintk_store(facility, level, dev_info, fmt, args);
 
